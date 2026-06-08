@@ -12,7 +12,7 @@ This is the capstone project for an agentic AI coding course. It is built entire
 
 ### First Launch
 
-The user runs a single Docker command (or a provided start script). A browser opens to `http://localhost:8000`. No login, no signup. They immediately see:
+The user runs a single start script. A browser opens to `http://localhost:8000`. No login, no signup. They immediately see:
 
 - A watchlist of 10 default tickers with live-updating prices in a grid
 - $10,000 in virtual cash
@@ -45,11 +45,11 @@ The user runs a single Docker command (or a provided start script). A browser op
 
 ## 3. Architecture Overview
 
-### Single Container, Single Port
+### Single Process, Single Port
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  Docker Container (port 8000)                   │
+│  Local Process (port 8000)                      │
 │                                                 │
 │  FastAPI (Python/uv)                            │
 │  ├── /api/*          REST endpoints             │
@@ -57,16 +57,16 @@ The user runs a single Docker command (or a provided start script). A browser op
 │  └── /*              Static file serving         │
 │                      (Next.js export)            │
 │                                                 │
-│  SQLite database (volume-mounted)               │
+│  SQLite database (local file)                   │
 │  Background task: market data polling/sim        │
 └─────────────────────────────────────────────────┘
 ```
 
 - **Frontend**: Next.js with TypeScript, built as a static export (`output: 'export'`), served by FastAPI as static files
 - **Backend**: FastAPI (Python), managed as a `uv` project
-- **Database**: SQLite, single file at `db/finally.db`, volume-mounted for persistence
+- **Database**: SQLite, single file at `db/finally.db`, persisted as a plain local file
 - **Real-time data**: Server-Sent Events (SSE) — simpler than WebSockets, one-way server→client push, works everywhere
-- **AI integration**: LiteLLM → OpenRouter (Cerebras for fast inference), with structured outputs for trade execution
+- **AI integration**: LiteLLM → Groq (`groq/openai/gpt-oss-120b`) for fast inference, with structured outputs for trade execution
 - **Market data**: Environment-variable driven — simulator by default, real data via Massive API if key provided
 
 ### Why These Choices
@@ -74,9 +74,9 @@ The user runs a single Docker command (or a provided start script). A browser op
 | Decision | Rationale |
 |---|---|
 | SSE over WebSockets | One-way push is all we need; simpler, no bidirectional complexity, universal browser support |
-| Static Next.js export | Single origin, no CORS issues, one port, one container, simple deployment |
+| Static Next.js export | Single origin, no CORS issues, one port, one process, simple deployment |
 | SQLite over Postgres | No auth = no multi-user = no need for a database server; self-contained, zero config |
-| Single Docker container | Students run one command; no docker-compose for production, no service orchestration |
+| No container runtime | Students run one script; no Docker install required, nothing to orchestrate |
 | uv for Python | Fast, modern Python project management; reproducible lockfile; what students should learn |
 | Market orders only | Eliminates order book, limit order logic, partial fills — dramatically simpler portfolio math |
 
@@ -93,15 +93,13 @@ finally/
 │   ├── PLAN.md               # This document
 │   └── ...                   # Additional agent reference docs
 ├── scripts/
-│   ├── start_mac.sh          # Launch Docker container (macOS/Linux)
-│   ├── stop_mac.sh           # Stop Docker container (macOS/Linux)
-│   ├── start_windows.ps1     # Launch Docker container (Windows PowerShell)
-│   └── stop_windows.ps1      # Stop Docker container (Windows PowerShell)
-├── test/                     # Playwright E2E tests + docker-compose.test.yml
-├── db/                       # Volume mount target (SQLite file lives here at runtime)
+│   ├── start_mac.sh          # Build frontend, launch backend (macOS/Linux)
+│   ├── stop_mac.sh           # Stop the running backend (macOS/Linux)
+│   ├── start_windows.ps1     # Build frontend, launch backend (Windows PowerShell)
+│   └── stop_windows.ps1      # Stop the running backend (Windows PowerShell)
+├── test/                     # Playwright E2E tests
+├── db/                       # SQLite file lives here at runtime
 │   └── .gitkeep              # Directory exists in repo; finally.db is gitignored
-├── Dockerfile                # Multi-stage build (Node → Python)
-├── docker-compose.yml        # Optional convenience wrapper
 ├── .env                      # Environment variables (gitignored, .env.example committed)
 └── .gitignore
 ```
@@ -111,18 +109,18 @@ finally/
 - **`frontend/`** is a self-contained Next.js project. It knows nothing about Python. It talks to the backend via `/api/*` endpoints and `/api/stream/*` SSE endpoints. Internal structure is up to the Frontend Engineer agent.
 - **`backend/`** is a self-contained uv project with its own `pyproject.toml`. It owns all server logic including database initialization, schema, seed data, API routes, SSE streaming, market data, and LLM integration. Internal structure is up to the Backend/Market Data agents.
 - **`backend/db/`** contains schema SQL definitions and seed logic. The backend lazily initializes the database on first request — creating tables and seeding default data if the SQLite file doesn't exist or is empty.
-- **`db/`** at the top level is the runtime volume mount point. The SQLite file (`db/finally.db`) is created here by the backend and persists across container restarts via Docker volume.
+- **`db/`** at the top level is where the SQLite file (`db/finally.db`) lives at runtime. It's created here by the backend on first run and persists across restarts as a plain local file.
 - **`planning/`** contains project-wide documentation, including this plan. All agents reference files here as the shared contract.
-- **`test/`** contains Playwright E2E tests and supporting infrastructure (e.g., `docker-compose.test.yml`). Unit tests live within `frontend/` and `backend/` respectively, following each framework's conventions.
-- **`scripts/`** contains start/stop scripts that wrap Docker commands.
+- **`test/`** contains Playwright E2E tests and a script that launches the app locally for testing. Unit tests live within `frontend/` and `backend/` respectively, following each framework's conventions.
+- **`scripts/`** contains start/stop scripts that build the frontend and launch/stop the backend process directly.
 
 ---
 
 ## 5. Environment Variables
 
 ```bash
-# Required: OpenRouter API key for LLM chat functionality
-OPENROUTER_API_KEY=your-openrouter-api-key-here
+# Required: Groq API key for LLM chat functionality
+GROQ_API_KEY=your-groq-api-key-here
 
 # Optional: Massive (Polygon.io) API key for real market data
 # If not set, the built-in market simulator is used (recommended for most users)
@@ -137,7 +135,7 @@ LLM_MOCK=false
 - If `MASSIVE_API_KEY` is set and non-empty → backend uses Massive REST API for market data
 - If `MASSIVE_API_KEY` is absent or empty → backend uses the built-in market simulator
 - If `LLM_MOCK=true` → backend returns deterministic mock LLM responses (for E2E tests)
-- The backend reads `.env` from the project root (mounted into the container or read via docker `--env-file`)
+- The backend reads `.env` from the project root directly on startup
 
 ---
 
@@ -189,7 +187,7 @@ The backend checks for the SQLite database on startup (or first request). If the
 
 - No separate migration step
 - No manual database setup
-- Fresh Docker volumes start with a clean, seeded database automatically
+- A fresh checkout starts with a clean, seeded database automatically on first run
 
 ### Schema
 
@@ -267,6 +265,8 @@ All tables include a `user_id` column defaulting to `"default"`. This is hardcod
 | POST | `/api/watchlist` | Add a ticker: `{ticker}` |
 | DELETE | `/api/watchlist/{ticker}` | Remove a ticker |
 
+`GET /api/watchlist` provides the initial snapshot on page load (before the SSE connection opens); live price updates after that arrive via `/api/stream/prices`.
+
 ### Chat
 | Method | Path | Description |
 |--------|------|-------------|
@@ -275,28 +275,28 @@ All tables include a `user_id` column defaulting to `"default"`. This is hardcod
 ### System
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/health` | Health check (for Docker/deployment) |
+| GET | `/api/health` | Health check (for process monitoring/deployment) |
 
 ---
 
 ## 9. LLM Integration
 
-When writing code to make calls to LLMs, use cerebras-inference skill to use LiteLLM via OpenRouter to the `openrouter/openai/gpt-oss-120b` model with Cerebras as the inference provider. Structured Outputs should be used to interpret the results.
+When writing code to make calls to LLMs, use the Groq skill to call LiteLLM with the `groq/openai/gpt-oss-120b` model via the Groq inference provider. Structured Outputs should be used to interpret the results.
 
-There is an OPENROUTER_API_KEY in the .env file in the project root.
+There is a GROQ_API_KEY in the .env file in the project root.
 
 ### How It Works
 
 When the user sends a chat message, the backend:
 
 1. Loads the user's current portfolio context (cash, positions with P&L, watchlist with live prices, total portfolio value)
-2. Loads recent conversation history from the `chat_messages` table
+2. Loads the most recent 20 messages of conversation history from the `chat_messages` table
 3. Constructs a prompt with a system message, portfolio context, conversation history, and the user's new message
-4. Calls the LLM via LiteLLM → OpenRouter, requesting structured output, using the cerebras-inference skill
+4. Calls the LLM via LiteLLM → Groq, requesting structured output, using the Groq skill
 5. Parses the complete structured JSON response
 6. Auto-executes any trades or watchlist changes specified in the response
 7. Stores the message and executed actions in `chat_messages`
-8. Returns the complete JSON response to the frontend (no token-by-token streaming — Cerebras inference is fast enough that a loading indicator is sufficient)
+8. Returns the complete JSON response to the frontend (no token-by-token streaming — Groq inference is fast enough that a loading indicator is sufficient)
 
 ### Structured Output Schema
 
@@ -315,7 +315,7 @@ The LLM is instructed to respond with JSON matching this schema:
 ```
 
 - `message` (required): The conversational text shown to the user
-- `trades` (optional): Array of trades to auto-execute. Each trade goes through the same validation as manual trades (sufficient cash for buys, sufficient shares for sells)
+- `trades` (optional): Array of trades to auto-execute, routed through the same shared trade-validation/execution function used by `POST /api/portfolio/trade` (sufficient cash for buys, sufficient shares for sells) — one code path, no duplicated checks
 - `watchlist_changes` (optional): Array of watchlist modifications
 
 ### Auto-Execution
@@ -339,7 +339,7 @@ The LLM should be prompted as "FinAlly, an AI trading assistant" with instructio
 
 ### LLM Mock Mode
 
-When `LLM_MOCK=true`, the backend returns deterministic mock responses instead of calling OpenRouter. This enables:
+When `LLM_MOCK=true`, the backend returns deterministic mock responses instead of calling Groq. This enables:
 - Fast, free, reproducible E2E tests
 - Development without an API key
 - CI/CD pipelines
@@ -371,55 +371,38 @@ The frontend is a single-page application with a dense, terminal-inspired layout
 
 ---
 
-## 11. Docker & Deployment
+## 11. Running & Deployment
 
-### Multi-Stage Dockerfile
+### Single Process, Single Port
+
+No container runtime is required. The start scripts build the frontend static export and launch the FastAPI backend directly via `uv`; FastAPI then serves both the static frontend files and all API routes on port 8000:
 
 ```
-Stage 1: Node 20 slim
-  - Copy frontend/
-  - npm install && npm run build (produces static export)
-
-Stage 2: Python 3.12 slim
-  - Install uv
-  - Copy backend/
-  - uv sync (install Python dependencies from lockfile)
-  - Copy frontend build output into a static/ directory
-  - Expose port 8000
-  - CMD: uvicorn serving FastAPI app
+scripts/start_*:
+  1. Build the frontend static export (npm install && npm run build)
+  2. uv sync in backend/ to install Python dependencies
+  3. uv run uvicorn ... — serves the static export + API on :8000
 ```
 
-FastAPI serves the static frontend files and all API routes on port 8000.
+### Database File
 
-### Docker Volume
-
-The SQLite database persists via a named Docker volume:
-
-```bash
-docker run -v finally-data:/app/db -p 8000:8000 --env-file .env finally
-```
-
-The `db/` directory in the project root maps to `/app/db` in the container. The backend writes `finally.db` to this path.
+The SQLite database persists as a plain local file at `db/finally.db`. The backend lazily creates and seeds it on first run — no separate setup step, no volumes to manage.
 
 ### Start/Stop Scripts
 
 **`scripts/start_mac.sh`** (macOS/Linux):
-- Builds the Docker image if not already built (or if `--build` flag passed)
-- Runs the container with the volume mount, port mapping, and `.env` file
-- Prints the URL to access the app
-- Optionally opens the browser
+- Builds the frontend static export
+- Installs backend dependencies (`uv sync`)
+- Launches the backend process and prints the URL to access the app
+- Opens the browser by default; pass `--no-browser` to skip
 
 **`scripts/stop_mac.sh`** (macOS/Linux):
-- Stops and removes the running container
-- Does NOT remove the volume (data persists)
+- Stops the running backend process
+- Leaves `db/finally.db` untouched (data persists)
 
 **`scripts/start_windows.ps1`** / **`scripts/stop_windows.ps1`**: PowerShell equivalents for Windows.
 
 All scripts should be idempotent — safe to run multiple times.
-
-### Optional Cloud Deployment
-
-The container is designed to deploy to AWS App Runner, Render, or any container platform. A Terraform configuration for App Runner may be provided in a `deploy/` directory as a stretch goal, but is not part of the core build.
 
 ---
 
@@ -442,7 +425,7 @@ The container is designed to deploy to AWS App Runner, Render, or any container 
 
 ### E2E Tests (in `test/`)
 
-**Infrastructure**: A separate `docker-compose.test.yml` in `test/` that spins up the app container plus a Playwright container. This keeps browser dependencies out of the production image.
+**Infrastructure**: A script in `test/` that builds the frontend, launches the backend locally (e.g., via `uv run uvicorn`), and runs Playwright against `http://localhost:8000`.
 
 **Environment**: Tests run with `LLM_MOCK=true` by default for speed and determinism.
 
