@@ -1,4 +1,4 @@
-﻿"""FinAlly Market Data Simulator Demo.
+"""FinAlly Market Data Simulator Demo.
 
 Run with:  uv run market_data_demo.py
 
@@ -24,7 +24,7 @@ from app.market.seed_prices import SEED_PRICES
 from app.market.simulator import SimulatorDataSource
 
 # Sparkline characters, low to high
-SPARK_CHARS = "â–â–‚â–ƒâ–„â–…â–†â–‡â–ˆ"
+SPARK_CHARS = "▁▂▃▄▅▆▇█"
 
 # Ordered ticker list matching the default watchlist
 TICKERS = ["AAPL", "GOOGL", "MSFT", "AMZN", "TSLA", "NVDA", "META", "JPM", "V", "NFLX"]

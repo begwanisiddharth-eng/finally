@@ -112,7 +112,7 @@ finally/
 - **`frontend/`** is a self-contained Next.js project. It knows nothing about Python. It talks to the backend via `/api/*` endpoints and `/api/stream/*` SSE endpoints. Internal structure is up to the Frontend Engineer agent.
 - **`backend/`** is a self-contained uv project with its own `pyproject.toml`. It owns all server logic including database initialization, schema, seed data, API routes, SSE streaming, market data, and LLM integration. Internal structure is up to the Backend/Market Data agents.
 - **`backend/db/`** contains SQL schema files and seed logic checked into source control. The backend uses these to lazily initialize the database on first run.
-- **`db/`** at the top level is where the SQLite file (`finally.db`) lives at runtime. It is created by the backend on first run, persists across restarts, and is gitignored. The `.gitignore` must contain `db/*.db` (not `db.sqlite3`) to cover `db/finally.db`.
+- **`db/`** at the top level is where the SQLite file (`finally.db`) lives at runtime. It is created by the backend on first run and persists across restarts. Gitignored via `db/*.db`; `db/.gitkeep` keeps the directory tracked.
 - **`planning/`** contains project-wide documentation, including this plan. All agents reference files here as the shared contract.
 - **`test/`** contains Playwright E2E tests and the `run_e2e.sh` / `run_e2e.ps1` scripts that build the app, launch it, and run the full suite.
 - **`scripts/`** contains start/stop scripts that build the frontend and launch/stop the backend process.
@@ -355,6 +355,7 @@ Error `400`:
 ```json
 {"ok": true}
 ```
+Clears: positions, trades, portfolio_snapshots. Restores cash_balance to 10000.0. Chat history is preserved.
 
 **`POST /api/chat`** — request: `{message}`
 ```json
@@ -363,10 +364,12 @@ Error `400`:
   "trades": [{"ticker": "AAPL", "side": "buy", "quantity": 10}],
   "watchlist_changes": [{"ticker": "PYPL", "action": "add"}],
   "trade_results": [
-    {"ticker": "AAPL", "side": "buy", "quantity": 10, "price": 195.50, "ok": true}
+    {"ticker": "AAPL", "side": "buy", "quantity": 10, "price": 195.50, "ok": true},
+    {"ticker": "ZZZZ", "side": "buy", "quantity": 5, "ok": false, "error": "Insufficient cash"}
   ],
   "watchlist_results": [
-    {"ticker": "PYPL", "action": "add", "ok": true}
+    {"ticker": "PYPL", "action": "add", "ok": true},
+    {"ticker": "???", "action": "add", "ok": false, "error": "Invalid ticker"}
   ]
 }
 ```
@@ -417,7 +420,7 @@ The LLM responds with JSON matching this schema:
 {
   "message": "Your conversational response to the user",
   "trades": [
-    {"ticker": "AAPL", "side": "buy", "quantity": 10}
+    {"ticker": "AAPL", "side": "buy", "quantity": 10.0}
   ],
   "watchlist_changes": [
     {"ticker": "PYPL", "action": "add"}
@@ -426,7 +429,7 @@ The LLM responds with JSON matching this schema:
 ```
 
 - `message` (required): The conversational text shown to the user
-- `trades` (optional): Array of trades to auto-execute, routed through the same shared trade-validation/execution function used by `POST /api/portfolio/trade` — one code path, no duplicated checks
+- `trades` (optional): Array of trades to auto-execute, routed through the same shared trade-validation/execution function used by `POST /api/portfolio/trade` — one code path, no duplicated checks. `quantity` is a positive float (fractional shares supported, minimum 0.001).
 - `watchlist_changes` (optional): Array of watchlist modifications; `action` is `"add"` or `"remove"`
 
 ### Auto-Execution
@@ -501,15 +504,6 @@ The start scripts build the frontend static export and launch the FastAPI backen
 
 All scripts are idempotent — safe to run multiple times.
 
-### Backend Dependencies
-
-The backend `pyproject.toml` must explicitly declare these as direct dependencies (not just rely on transitive installs):
-- `python-dotenv` — loads `.env` at startup
-- `litellm` — LLM integration (§9)
-- `aiosqlite` — async SQLite driver required for async FastAPI route handlers
-
-`rich` is only used by the dev demo script and belongs in `optional-dependencies.dev`, not `dependencies`.
-
 ### Database
 
 The SQLite database persists at `db/finally.db`. The backend creates and seeds it on first run — no separate setup step required.
@@ -549,22 +543,8 @@ The SQLite database persists at `db/finally.db`. The backend creates and seeds i
 
 ---
 
-## 13. Market Data Component: Status and Pre-Build Checklist for Next Phase
+## 13. Build Status
 
-The market data subsystem (`backend/app/market/`) is complete and spec-compliant. All blocking and recommended fixes from the initial review were applied in commit `1fbdd7b`. 79 tests pass, ruff linting is clean.
+**Market data** (`backend/app/market/`) — complete. 79 tests pass, ruff clean. All spec-required functionality is implemented: `PriceCache`, `GBMSimulator`, `SimulatorDataSource`, `MassiveDataSource`, SSE streaming (`/api/stream/prices`), session-open tracking.
 
-### Resolved (commit `1fbdd7b`)
-
-`session_open` in `PriceCache`, SSE per-ticker events, `prev_price`/`change_pct` wire names, ISO 8601 timestamps, `timestamp=0.0` falsy fix, GBM `dt` decoupled from `update_interval`, module-level router bug, `MassiveDataSource` ticker normalization, dead `conftest.py` fixture removed, `rich` moved to dev dependencies.
-
-### Blocking fixes before building portfolio/watchlist/chat
-
-- **Missing backend dependencies**: Add `python-dotenv`, `litellm`, and `aiosqlite` to `dependencies` in `pyproject.toml`. These are required by §5 (env loading), §9 (LLM), and §7 (async database) respectively. Do not rely on transitive installs.
-- **`.env.example` missing**: Create at the project root with placeholder values for `GROQ_API_KEY`, `MASSIVE_API_KEY`, and `LLM_MOCK` (as documented in §5).
-- **`db/finally.db` not gitignored**: The `.gitignore` currently uses `db.sqlite3` (Django convention). Change to `db/*.db` to cover the actual runtime path `db/finally.db` (per §4).
-
-### Recommended fixes (minor, clean up before proceeding)
-
-- **SSE generator silent error swallowing** (`stream.py`): The `while True` loop catches only `asyncio.CancelledError`. An unexpected `Exception` (e.g., from `price_cache.get_all()` or `json.dumps()`) would close the SSE stream without logging. Add a broad `except Exception` with a `logger.exception()` call around the loop body.
-- **Fragile rounding assertion** (`tests/market/test_simulator.py`): `assert len(decimal_part) <= 2` allows 0 or 1 decimal places. Replace with `assert round(result["AAPL"], 2) == result["AAPL"]`.
-- **Test accesses private attribute** (`tests/market/test_simulator.py`): `assert len(sim._tickers) == 1` should use `assert len(sim.get_tickers()) == 1`.
+**Portfolio, watchlist, chat, frontend, scripts, E2E tests** — not yet built.

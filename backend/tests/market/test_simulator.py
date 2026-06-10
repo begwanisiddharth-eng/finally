@@ -45,7 +45,7 @@ class TestGBMSimulator:
         """Test that adding a duplicate ticker is a no-op."""
         sim = GBMSimulator(tickers=["AAPL"])
         sim.add_ticker("AAPL")
-        assert len(sim._tickers) == 1
+        assert len(sim.get_tickers()) == 1
 
     def test_remove_nonexistent_is_noop(self):
         """Test that removing a non-existent ticker is a no-op."""
@@ -124,9 +124,5 @@ class TestGBMSimulator:
         """Test that prices are rounded to 2 decimal places."""
         sim = GBMSimulator(tickers=["AAPL"])
         result = sim.step()
-        price_str = str(result["AAPL"])
-        # Check that we have at most 2 decimal places
-        if '.' in price_str:
-            decimal_part = price_str.split('.')[1]
-            assert len(decimal_part) <= 2
+        assert round(result["AAPL"], 2) == result["AAPL"]
 

@@ -1,4 +1,4 @@
-﻿"""Factory for creating market data sources."""
+"""Factory for creating market data sources."""
 
 from __future__ import annotations
 
@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 def create_market_data_source(price_cache: PriceCache) -> MarketDataSource:
     """Create the appropriate market data source based on environment variables.
 
-    - MASSIVE_API_KEY set and non-empty â†’ MassiveDataSource (real market data)
-    - Otherwise â†’ SimulatorDataSource (GBM simulation)
+    - MASSIVE_API_KEY set and non-empty -> MassiveDataSource (real market data)
+    - Otherwise -> SimulatorDataSource (GBM simulation)
 
     Returns an unstarted source. Caller must await source.start(tickers).
     """

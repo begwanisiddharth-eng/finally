@@ -1,4 +1,4 @@
-﻿"""Abstract interface for market data sources."""
+"""Abstract interface for market data sources."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ class MarketDataSource(ABC):
     """Contract for market data providers.
 
     Implementations push price updates into a shared PriceCache on their own
-    schedule. Downstream code never calls the data source directly for prices â€”
+    schedule. Downstream code never calls the data source directly for prices --
     it reads from the cache.
 
     Lifecycle:

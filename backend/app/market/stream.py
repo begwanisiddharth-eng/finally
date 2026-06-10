@@ -66,20 +66,22 @@ async def _generate_events(
 
     try:
         while True:
-            # Check for client disconnect
             if await request.is_disconnected():
                 logger.info("SSE client disconnected: %s", client_ip)
                 break
 
-            current_version = price_cache.version
-            if current_version != last_version:
-                last_version = current_version
-                prices = price_cache.get_all()
+            try:
+                current_version = price_cache.version
+                if current_version != last_version:
+                    last_version = current_version
+                    prices = price_cache.get_all()
 
-                for ticker, update in prices.items():
-                    session_open = price_cache.get_session_open(ticker)
-                    payload = json.dumps(update.to_dict(session_open=session_open))
-                    yield f"data: {payload}\n\n"
+                    for ticker, update in prices.items():
+                        session_open = price_cache.get_session_open(ticker)
+                        payload = json.dumps(update.to_dict(session_open=session_open))
+                        yield f"data: {payload}\n\n"
+            except Exception:
+                logger.exception("SSE stream error for %s", client_ip)
 
             await asyncio.sleep(interval)
     except asyncio.CancelledError:
