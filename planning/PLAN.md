@@ -549,20 +549,22 @@ The SQLite database persists at `db/finally.db`. The backend creates and seeds i
 
 ---
 
-## 13. Market Data Component: Pre-Build Checklist
+## 13. Market Data Component: Status and Pre-Build Checklist for Next Phase
 
-The market data subsystem (`backend/app/market/`) is complete. Before the backend engineer adds the portfolio, watchlist, chat, and app entry-point code, the following issues in the existing code **must** be resolved.
+The market data subsystem (`backend/app/market/`) is complete and spec-compliant. All blocking and recommended fixes from the initial review were applied in commit `1fbdd7b`. 79 tests pass, ruff linting is clean.
 
-### Blocking fixes (required before any downstream code is built)
+### Resolved (commit `1fbdd7b`)
 
-- **`session_open` missing from `PriceCache`**: Add a `_session_open: dict[str, float]` dict. Populate it the first time each ticker's price is set within a process lifetime; never overwrite. Expose via `get_session_open(ticker)`. Include in `PriceUpdate` and all SSE events.
-- **SSE event format wrong**: `stream.py` currently emits all tickers in a single batch `dict[str, dict]`. Fix to emit one `data:` line per ticker per cadence tick (per §6). Field names must be `prev_price` and `change_pct` (not `previous_price` / `change_percent`). Timestamp must be ISO 8601 string (not Unix float).
-- **`create_stream_router` module-level router bug**: The `APIRouter` is created at module level and mutated by the factory. Move `router = APIRouter(...)` inside `create_stream_router()` so each call returns a fresh router.
-- **`timestamp=0.0` falsy bug** in `cache.py:30`: Change `ts = timestamp or time.time()` to `ts = timestamp if timestamp is not None else time.time()`.
+`session_open` in `PriceCache`, SSE per-ticker events, `prev_price`/`change_pct` wire names, ISO 8601 timestamps, `timestamp=0.0` falsy fix, GBM `dt` decoupled from `update_interval`, module-level router bug, `MassiveDataSource` ticker normalization, dead `conftest.py` fixture removed, `rich` moved to dev dependencies.
 
-### Recommended fixes (clean up before proceeding)
+### Blocking fixes before building portfolio/watchlist/chat
 
-- **GBM `dt` decoupled from `update_interval`** (`simulator.py`): In `SimulatorDataSource.start()`, compute and pass `dt = self._interval / GBMSimulator.TRADING_SECONDS_PER_YEAR` to `GBMSimulator` instead of using the hardcoded default.
-- **`MassiveDataSource.start()` ticker normalization** (`massive_client.py`): Add `.upper().strip()` normalization in `start()` to match the behaviour of `add_ticker()` and `remove_ticker()`.
-- **`conftest.py` dead fixture**: Remove the `event_loop_policy` fixture — it returns a policy object but never calls `asyncio.set_event_loop_policy()`. Asyncio mode is already configured via `asyncio_mode = "auto"` in `pyproject.toml`.
-- **`rich` in production deps**: Move `rich` from `dependencies` to `optional-dependencies.dev` in `pyproject.toml`; it is only used by the dev demo script.
+- **Missing backend dependencies**: Add `python-dotenv`, `litellm`, and `aiosqlite` to `dependencies` in `pyproject.toml`. These are required by §5 (env loading), §9 (LLM), and §7 (async database) respectively. Do not rely on transitive installs.
+- **`.env.example` missing**: Create at the project root with placeholder values for `GROQ_API_KEY`, `MASSIVE_API_KEY`, and `LLM_MOCK` (as documented in §5).
+- **`db/finally.db` not gitignored**: The `.gitignore` currently uses `db.sqlite3` (Django convention). Change to `db/*.db` to cover the actual runtime path `db/finally.db` (per §4).
+
+### Recommended fixes (minor, clean up before proceeding)
+
+- **SSE generator silent error swallowing** (`stream.py`): The `while True` loop catches only `asyncio.CancelledError`. An unexpected `Exception` (e.g., from `price_cache.get_all()` or `json.dumps()`) would close the SSE stream without logging. Add a broad `except Exception` with a `logger.exception()` call around the loop body.
+- **Fragile rounding assertion** (`tests/market/test_simulator.py`): `assert len(decimal_part) <= 2` allows 0 or 1 decimal places. Replace with `assert round(result["AAPL"], 2) == result["AAPL"]`.
+- **Test accesses private attribute** (`tests/market/test_simulator.py`): `assert len(sim._tickers) == 1` should use `assert len(sim.get_tickers()) == 1`.
