@@ -1,67 +1,51 @@
 # FinAlly — AI Trading Workstation
 
-A Bloomberg-style trading terminal with live market data, a simulated portfolio, and an AI assistant that can analyze positions and execute trades via natural language.
+A dark-themed, Bloomberg-style trading terminal with live streaming prices, a simulated portfolio, and an AI chat assistant that can analyze positions and execute trades.
 
-Built as a capstone project for an agentic AI coding course — the entire application is written by orchestrated AI coding agents.
+## Quick Start
 
-## What it does
+```powershell
+# Copy and fill in your Groq API key
+cp .env.example .env
 
-- **Live prices** — 10 default tickers streaming via SSE, flashing green/red on price change
-- **Sparkline charts** — per-ticker mini-charts in the watchlist, plus a detailed chart for the selected ticker
-- **Portfolio** — buy/sell shares at market price, track unrealized P&L via a heatmap and value chart
-- **AI chat** — ask the assistant to analyze your portfolio, suggest trades, or execute them directly
-- **Watchlist management** — add/remove tickers manually or via the AI
-
-## Stack
-
-| Layer | Technology |
-|---|---|
-| Frontend | Next.js (TypeScript), static export, Tailwind CSS, Zustand, Lightweight Charts |
-| Backend | FastAPI (Python), served on port 8000 |
-| Database | SQLite (`db/finally.db`), lazy-initialized on first run |
-| Real-time | Server-Sent Events (SSE) |
-| AI | LiteLLM → Groq (`groq/openai/gpt-oss-120b`) |
-| Market data | GBM simulator (default) or Massive/Polygon.io API |
-
-## Quick start
-
-```bash
-# macOS / Linux
-cp .env.example .env          # add your GROQ_API_KEY
-bash scripts/start_mac.sh
-
-# Windows (PowerShell)
-Copy-Item .env.example .env   # add your GROQ_API_KEY
+# Start the app (builds frontend, launches backend on port 8000)
 .\scripts\start_windows.ps1
 ```
 
-Open `http://localhost:8000`. No login required.
+Then open [http://localhost:8000](http://localhost:8000).
 
-## Environment variables
+To stop: `.\scripts\stop_windows.ps1`
+
+## Features
+
+- Live price streaming via SSE with green/red flash animations
+- Simulated portfolio — buy/sell with market orders, track P&L
+- Portfolio heatmap (treemap) and P&L history chart
+- AI chat assistant (Groq) that can execute trades and manage the watchlist
+- Watchlist management — add/remove tickers manually or via chat
+- Portfolio reset to restore $10k starting balance
+
+## Environment Variables
 
 | Variable | Required | Description |
 |---|---|---|
-| `GROQ_API_KEY` | Yes | Groq API key for the AI assistant |
+| `GROQ_API_KEY` | Yes | Groq API key for AI chat |
 | `MASSIVE_API_KEY` | No | Polygon.io key for real market data (simulator used if unset) |
-| `LLM_MOCK` | No | Set to `true` for deterministic mock responses (E2E testing) |
+| `LLM_MOCK` | No | Set `true` for mock LLM responses (E2E tests) |
 
-## Development
+## Stack
 
-```bash
+- **Frontend**: Next.js (TypeScript, static export), Tailwind CSS, Zustand, Lightweight Charts
+- **Backend**: FastAPI + Python (`uv`), SQLite, LiteLLM → Groq
+- **Real-time**: Server-Sent Events (SSE)
+
+## Running Tests
+
+```powershell
+# Backend unit tests
 cd backend
-uv sync --extra dev       # install dependencies + dev tools
-uv run pytest -v          # run tests
-uv run ruff check app/    # lint
-uv run market_data_demo.py  # live terminal price dashboard
-```
+uv run pytest -v
 
-## Testing
-
-```bash
-# Unit tests (backend)
-cd backend && uv run pytest
-
-# E2E tests (Playwright) — builds app, starts backend with LLM_MOCK=true
-.\test\run_e2e.ps1        # Windows
-bash test/run_e2e.sh      # macOS / Linux
+# E2E tests (Playwright)
+.\test\run_e2e.ps1
 ```
