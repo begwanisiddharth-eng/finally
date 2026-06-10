@@ -53,7 +53,7 @@ finally/
 ├── backend/     # FastAPI uv project
 ├── planning/    # Project documentation and agent contracts
 ├── test/        # Playwright E2E tests
-├── db/          # SQLite file lives here at runtime
+├── db/          # SQLite volume mount (runtime)
 └── scripts/     # Start/stop helpers
 ```
 
