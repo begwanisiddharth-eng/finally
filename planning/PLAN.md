@@ -130,6 +130,7 @@ GROQ_API_KEY=your-groq-api-key-here
 MASSIVE_API_KEY=
 
 # Optional: Set to "true" for deterministic mock LLM responses (testing)
+# Read as a string — check with: os.getenv("LLM_MOCK", "false").lower() == "true"
 LLM_MOCK=false
 ```
 
@@ -164,6 +165,7 @@ Both the simulator and the Massive client implement the same abstract interface.
 
 - A single background task (simulator or Massive poller) writes to an in-memory price cache
 - The cache holds per ticker: latest price, previous price, session-open price (price at first observation this session), and timestamp
+- **Session** = backend process lifetime; the session-open price resets each time the backend restarts. It is not tied to calendar day or midnight.
 - The session-open price enables the frontend to display change since session start
 - SSE streams read from this cache and push updates to connected clients
 
@@ -174,6 +176,7 @@ Both the simulator and the Massive client implement the same abstract interface.
 - Server pushes price updates for **all tickers in the system** at a regular cadence (~500ms)
 - Each SSE event contains: `ticker`, `price`, `prev_price`, `session_open`, `change_pct`, `direction`, `timestamp`
 - Client handles reconnection automatically (EventSource has built-in retry)
+- **Scalability note**: pushing all tickers every ~500ms is fine for the default 10–20 ticker watchlist. At 50+ tickers, delta-only updates or per-ticker SSE topics should be considered (future optimization, not in scope).
 
 ---
 
@@ -182,6 +185,10 @@ Both the simulator and the Massive client implement the same abstract interface.
 ### SQLite with Lazy Initialization
 
 The backend checks for the SQLite database on startup. If the file doesn't exist or tables are missing, it creates the schema and seeds default data — no separate migration step, no manual setup.
+
+Enable WAL mode (`PRAGMA journal_mode=WAL`) on connection open. This allows the background snapshot writer and trade-execution writes to coexist without blocking each other, since WAL permits concurrent readers and one writer.
+
+**Single-user design**: every table has a `user_id` column defaulting to `"default"`. This is a forward-compatibility stub — it is never varied in this app. Multi-user support would be trivial to add later but is explicitly out of scope.
 
 ### Schema
 
@@ -201,7 +208,7 @@ The backend checks for the SQLite database on startup. If the file doesn't exist
 - `id` TEXT PRIMARY KEY (UUID)
 - `user_id` TEXT (default: `"default"`)
 - `ticker` TEXT
-- `quantity` REAL (fractional shares supported)
+- `quantity` REAL (fractional shares supported; minimum increment 0.001)
 - `avg_cost` REAL
 - `updated_at` TEXT (ISO timestamp)
 - UNIQUE constraint on `(user_id, ticker)`
@@ -211,7 +218,7 @@ The backend checks for the SQLite database on startup. If the file doesn't exist
 - `user_id` TEXT (default: `"default"`)
 - `ticker` TEXT
 - `side` TEXT (`"buy"` or `"sell"`)
-- `quantity` REAL (fractional shares supported)
+- `quantity` REAL (fractional shares supported; minimum increment 0.001)
 - `price` REAL
 - `executed_at` TEXT (ISO timestamp)
 
@@ -226,7 +233,7 @@ The backend checks for the SQLite database on startup. If the file doesn't exist
 - `user_id` TEXT (default: `"default"`)
 - `role` TEXT (`"user"` or `"assistant"`)
 - `content` TEXT
-- `actions` TEXT (JSON — trades executed, watchlist changes made; null for user messages)
+- `actions` TEXT (JSON — serialized object containing `trades`, `watchlist_changes`, `trade_results`, `watchlist_results` as returned by `POST /api/chat`; null for user messages and assistant messages with no actions)
 - `created_at` TEXT (ISO timestamp)
 
 ### Default Seed Data
@@ -260,6 +267,8 @@ The backend checks for the SQLite database on startup. If the file doesn't exist
 
 `GET /api/watchlist` provides the initial snapshot on page load; live price updates after that arrive via `/api/stream/prices`.
 
+`POST /api/watchlist` validates that the ticker is a non-empty string of 1–10 uppercase alphanumeric characters. It does **not** verify the ticker exists in any external registry — the simulator accepts any valid ticker and will begin generating prices for it immediately.
+
 ### Chat
 | Method | Path | Description |
 |--------|------|-------------|
@@ -269,6 +278,14 @@ The backend checks for the SQLite database on startup. If the file doesn't exist
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/health` | Health check |
+
+### Standard Error Envelope
+
+All non-2xx responses use this shape:
+```json
+{"ok": false, "error": "Human-readable message"}
+```
+`POST /api/portfolio/trade` uses `400`. Other endpoints use `400` for bad input, `404` for not found, `500` for unexpected errors.
 
 ### Response Shapes
 
@@ -351,6 +368,12 @@ Error `400`:
 }
 ```
 
+**`GET /api/health`**
+```json
+{"status": "ok"}
+```
+Returns `200` if the process is running and the DB is reachable (simple `SELECT 1` check).
+
 **SSE event** (`GET /api/stream/prices`)
 ```json
 {
@@ -419,6 +442,10 @@ The LLM should be prompted as "FinAlly, an AI trading assistant" with instructio
 - Be concise and data-driven in responses
 - Always respond with valid structured JSON
 
+### Rate Limiting
+
+The frontend disables the chat submit button while a request is in flight (one request at a time). This is sufficient to prevent accidental Groq quota exhaustion in normal use — no server-side rate limiter needed for this single-user demo.
+
 ### LLM Mock Mode
 
 When `LLM_MOCK=true`, the backend returns deterministic mock responses instead of calling Groq, enabling fast, reproducible E2E tests and development without an API key.
@@ -443,10 +470,12 @@ The frontend is a single-page application with a dense, terminal-inspired layout
 ### Technical Notes
 
 - Use `EventSource` for SSE connection to `/api/stream/prices`
-- Canvas-based charting library preferred (Lightweight Charts or Recharts) for performance
+- **Charting library: Lightweight Charts** (TradingView) — canvas-based, purpose-built for financial time series, matches the terminal aesthetic. Do not use Recharts (SVG-based, not suited for high-frequency updates).
 - Price flash effect: on receiving a new price, briefly apply a CSS class with background color transition, then remove it
 - All API calls go to the same origin (`/api/*`) — no CORS configuration needed
 - Tailwind CSS for styling with a custom dark theme
+- **State management: Zustand** — lightweight, no boilerplate, easy to share SSE price state, positions, and chat history across components without prop drilling
+- **Known limitation**: sparkline data is accumulated in memory from SSE since page load and is lost on refresh. This is intentional for simplicity; a `price_history` table would be needed for persistence.
 
 ---
 
