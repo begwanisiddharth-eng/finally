@@ -112,7 +112,7 @@ finally/
 - **`frontend/`** is a self-contained Next.js project. It knows nothing about Python. It talks to the backend via `/api/*` endpoints and `/api/stream/*` SSE endpoints. Internal structure is up to the Frontend Engineer agent.
 - **`backend/`** is a self-contained uv project with its own `pyproject.toml`. It owns all server logic including database initialization, schema, seed data, API routes, SSE streaming, market data, and LLM integration. Internal structure is up to the Backend/Market Data agents.
 - **`backend/db/`** contains SQL schema files and seed logic checked into source control. The backend uses these to lazily initialize the database on first run.
-- **`db/`** at the top level is where the SQLite file (`finally.db`) lives at runtime. It is created by the backend on first run, persists across restarts, and is gitignored.
+- **`db/`** at the top level is where the SQLite file (`finally.db`) lives at runtime. It is created by the backend on first run, persists across restarts, and is gitignored. The `.gitignore` must contain `db/*.db` (not `db.sqlite3`) to cover `db/finally.db`.
 - **`planning/`** contains project-wide documentation, including this plan. All agents reference files here as the shared contract.
 - **`test/`** contains Playwright E2E tests and the `run_e2e.sh` / `run_e2e.ps1` scripts that build the app, launch it, and run the full suite.
 - **`scripts/`** contains start/stop scripts that build the frontend and launch/stop the backend process.
@@ -166,6 +166,7 @@ Both the simulator and the Massive client implement the same abstract interface.
 - A single background task (simulator or Massive poller) writes to an in-memory price cache
 - The cache holds per ticker: latest price, previous price, session-open price (price at first observation this session), and timestamp
 - **Session** = backend process lifetime; the session-open price resets each time the backend restarts. It is not tied to calendar day or midnight.
+- `session_open` is stored in a separate dict within `PriceCache`, set the **first time** a ticker is updated per process lifetime and **never overwritten** thereafter. It must be exposed via a `get_session_open(ticker)` method and included in every SSE event and `GET /api/watchlist` response.
 - The session-open price enables the frontend to display change since session start
 - SSE streams read from this cache and push updates to connected clients
 
@@ -174,7 +175,9 @@ Both the simulator and the Massive client implement the same abstract interface.
 - Endpoint: `GET /api/stream/prices`
 - Long-lived SSE connection; client uses native `EventSource` API
 - Server pushes price updates for **all tickers in the system** at a regular cadence (~500ms)
-- Each SSE event contains: `ticker`, `price`, `prev_price`, `session_open`, `change_pct`, `direction`, `timestamp`
+- Each SSE `data:` line is a **single-ticker JSON object** — do not batch multiple tickers into one event. One event per ticker per cadence tick.
+- Fields: `ticker`, `price`, `prev_price`, `session_open`, `change_pct`, `direction`, `timestamp`. The names `prev_price` and `change_pct` are the exact wire contract and must match the `GET /api/watchlist` response exactly.
+- The `timestamp` field is an ISO 8601 string (e.g., `"2026-01-01T10:00:00Z"`), not a Unix timestamp float.
 - Client handles reconnection automatically (EventSource has built-in retry)
 - **Scalability note**: pushing all tickers every ~500ms is fine for the default 10–20 ticker watchlist. At 50+ tickers, delta-only updates or per-ticker SSE topics should be considered (future optimization, not in scope).
 
@@ -498,6 +501,15 @@ The start scripts build the frontend static export and launch the FastAPI backen
 
 All scripts are idempotent — safe to run multiple times.
 
+### Backend Dependencies
+
+The backend `pyproject.toml` must explicitly declare these as direct dependencies (not just rely on transitive installs):
+- `python-dotenv` — loads `.env` at startup
+- `litellm` — LLM integration (§9)
+- `aiosqlite` — async SQLite driver required for async FastAPI route handlers
+
+`rich` is only used by the dev demo script and belongs in `optional-dependencies.dev`, not `dependencies`.
+
 ### Database
 
 The SQLite database persists at `db/finally.db`. The backend creates and seeds it on first run — no separate setup step required.
@@ -534,3 +546,23 @@ The SQLite database persists at `db/finally.db`. The backend creates and seeds i
 - Portfolio visualization: heatmap renders with correct colors, P&L chart has data points
 - AI chat (mocked): send a message, receive a response, trade execution appears inline
 - SSE resilience: disconnect and verify reconnection
+
+---
+
+## 13. Market Data Component: Pre-Build Checklist
+
+The market data subsystem (`backend/app/market/`) is complete. Before the backend engineer adds the portfolio, watchlist, chat, and app entry-point code, the following issues in the existing code **must** be resolved.
+
+### Blocking fixes (required before any downstream code is built)
+
+- **`session_open` missing from `PriceCache`**: Add a `_session_open: dict[str, float]` dict. Populate it the first time each ticker's price is set within a process lifetime; never overwrite. Expose via `get_session_open(ticker)`. Include in `PriceUpdate` and all SSE events.
+- **SSE event format wrong**: `stream.py` currently emits all tickers in a single batch `dict[str, dict]`. Fix to emit one `data:` line per ticker per cadence tick (per §6). Field names must be `prev_price` and `change_pct` (not `previous_price` / `change_percent`). Timestamp must be ISO 8601 string (not Unix float).
+- **`create_stream_router` module-level router bug**: The `APIRouter` is created at module level and mutated by the factory. Move `router = APIRouter(...)` inside `create_stream_router()` so each call returns a fresh router.
+- **`timestamp=0.0` falsy bug** in `cache.py:30`: Change `ts = timestamp or time.time()` to `ts = timestamp if timestamp is not None else time.time()`.
+
+### Recommended fixes (clean up before proceeding)
+
+- **GBM `dt` decoupled from `update_interval`** (`simulator.py`): In `SimulatorDataSource.start()`, compute and pass `dt = self._interval / GBMSimulator.TRADING_SECONDS_PER_YEAR` to `GBMSimulator` instead of using the hardcoded default.
+- **`MassiveDataSource.start()` ticker normalization** (`massive_client.py`): Add `.upper().strip()` normalization in `start()` to match the behaviour of `add_ticker()` and `remove_ticker()`.
+- **`conftest.py` dead fixture**: Remove the `event_loop_policy` fixture — it returns a policy object but never calls `asyncio.set_event_loop_policy()`. Asyncio mode is already configured via `asyncio_mode = "auto"` in `pyproject.toml`.
+- **`rich` in production deps**: Move `rich` from `dependencies` to `optional-dependencies.dev` in `pyproject.toml`; it is only used by the dev demo script.
