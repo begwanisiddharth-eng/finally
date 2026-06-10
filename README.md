@@ -1,62 +1,67 @@
 # FinAlly — AI Trading Workstation
 
-A visually stunning AI-powered trading workstation that streams live market data, simulates portfolio trading, and integrates an LLM chat assistant that can analyze positions and execute trades via natural language.
+A Bloomberg-style trading terminal with live market data, a simulated portfolio, and an AI assistant that can analyze positions and execute trades via natural language.
 
-Built entirely by coding agents as a capstone project for an agentic AI coding course.
+Built as a capstone project for an agentic AI coding course — the entire application is written by orchestrated AI coding agents.
 
-## Features
+## What it does
 
-- **Live price streaming** via SSE with green/red flash animations
-- **Simulated portfolio** — $10k virtual cash, market orders, instant fills
-- **Portfolio visualizations** — heatmap (treemap), P&L chart, positions table
-- **AI chat assistant** — analyzes holdings, suggests and auto-executes trades
-- **Watchlist management** — track tickers manually or via AI
-- **Dark terminal aesthetic** — Bloomberg-inspired, data-dense layout
+- **Live prices** — 10 default tickers streaming via SSE, flashing green/red on price change
+- **Sparkline charts** — per-ticker mini-charts in the watchlist, plus a detailed chart for the selected ticker
+- **Portfolio** — buy/sell shares at market price, track unrealized P&L via a heatmap and value chart
+- **AI chat** — ask the assistant to analyze your portfolio, suggest trades, or execute them directly
+- **Watchlist management** — add/remove tickers manually or via the AI
 
-## Architecture
+## Stack
 
-A single backend process serving everything on port 8000:
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js (TypeScript), static export, Tailwind CSS, Zustand, Lightweight Charts |
+| Backend | FastAPI (Python), served on port 8000 |
+| Database | SQLite (`db/finally.db`), lazy-initialized on first run |
+| Real-time | Server-Sent Events (SSE) |
+| AI | LiteLLM → Groq (`groq/openai/gpt-oss-120b`) |
+| Market data | GBM simulator (default) or Massive/Polygon.io API |
 
-- **Frontend**: Next.js (static export) with TypeScript and Tailwind CSS
-- **Backend**: FastAPI (Python/uv) with SSE streaming
-- **Database**: SQLite with lazy initialization
-- **AI**: LiteLLM → Groq (`groq/openai/gpt-oss-120b`) with structured outputs
-- **Market data**: Built-in GBM simulator (default) or Massive API (optional)
-
-## Quick Start
+## Quick start
 
 ```bash
-# Clone and configure
-cp .env.example .env
-# Add your GROQ_API_KEY to .env
+# macOS / Linux
+cp .env.example .env          # add your GROQ_API_KEY
+bash scripts/start_mac.sh
 
-# Run locally (builds the frontend, launches the backend)
-./scripts/start_mac.sh        # macOS/Linux
-scripts/start_windows.ps1     # Windows
-
-# Open http://localhost:8000
+# Windows (PowerShell)
+Copy-Item .env.example .env   # add your GROQ_API_KEY
+.\scripts\start_windows.ps1
 ```
 
-## Environment Variables
+Open `http://localhost:8000`. No login required.
+
+## Environment variables
 
 | Variable | Required | Description |
 |---|---|---|
-| `GROQ_API_KEY` | Yes | Groq API key for AI chat |
-| `MASSIVE_API_KEY` | No | Massive (Polygon.io) key for real market data; omit to use simulator |
-| `LLM_MOCK` | No | Set `true` for deterministic mock LLM responses (testing) |
+| `GROQ_API_KEY` | Yes | Groq API key for the AI assistant |
+| `MASSIVE_API_KEY` | No | Polygon.io key for real market data (simulator used if unset) |
+| `LLM_MOCK` | No | Set to `true` for deterministic mock responses (E2E testing) |
 
-## Project Structure
+## Development
 
-```
-finally/
-├── frontend/    # Next.js static export
-├── backend/     # FastAPI uv project
-├── planning/    # Project documentation and agent contracts
-├── test/        # Playwright E2E tests
-├── db/          # SQLite volume mount (runtime)
-└── scripts/     # Start/stop helpers
+```bash
+cd backend
+uv sync --extra dev       # install dependencies + dev tools
+uv run pytest -v          # run tests
+uv run ruff check app/    # lint
+uv run market_data_demo.py  # live terminal price dashboard
 ```
 
-## License
+## Testing
 
-See [LICENSE](LICENSE).
+```bash
+# Unit tests (backend)
+cd backend && uv run pytest
+
+# E2E tests (Playwright) — builds app, starts backend with LLM_MOCK=true
+.\test\run_e2e.ps1        # Windows
+bash test/run_e2e.sh      # macOS / Linux
+```
