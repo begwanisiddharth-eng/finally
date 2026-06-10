@@ -1,0 +1,14 @@
+{
+  "hooks":{
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "opencode run \"Review changes since last commit and write the results to a file called planning/REVIEW.md\""
+          }
+        ]
+      }
+    ]
+  }
+}

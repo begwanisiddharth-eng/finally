@@ -1,121 +1,104 @@
-# Code Review — Latest Commit: Fix pre-build blockers
+# Review — Changes Since Last Commit
 
-**Commit:** `32d12da` — "Fix pre-build blockers: deps, gitignore, env example"
-**Scope:** `.env.example`, `.gitignore`, `backend/pyproject.toml`, `planning/PLAN.md`, `planning/REVIEW.md`
-
----
-
-## 1. What Was Fixed
-
-| Previous Issue | Status | File(s) |
-|---|---|---|
-| `python-dotenv`, `litellm`, `aiosqlite` missing from deps | FIXED — added to `dependencies` | `backend/pyproject.toml:12-14` |
-| `.env.example` missing | FIXED — created with `GROQ_API_KEY`, `MASSIVE_API_KEY`, `LLM_MOCK` | `.env.example` |
-| `db/finally.db` not gitignored | FIXED — `db.sqlite3` replaced with `db/*.db` | `.gitignore:61` |
-| `.gitignore` embedded line numbers (all patterns broken) | FIXED — line numbers stripped, file is now valid | `.gitignore` (entire file) |
-| PLAN.md §13 blocking checklist | FIXED — all three blocking items resolved; doc updated | `planning/PLAN.md:552-570` |
-| REVIEW.md stale | FIXED — updated to reflect 1fbdd7b fixes | `planning/REVIEW.md` |
-
-All three blocking pre-build items from PLAN.md §13 are resolved. The commit delivers exactly what was promised.
+**Last commit:** `c66651e` — "Rewrite README.md to be concise and Windows-first"
+**Branch:** `main`
 
 ---
 
-## 2. Issues Introduced by This Commit
+## Summary
 
-### 2.1 Encoding corruption (mojibake) in docstrings
+Since the last commit, **2 tracked files** were modified and **3 untracked directories** appeared. The changes fall into two categories: (1) Claude/opencode automation tooling, and (2) an updated REVIEW.md.
 
-**Files:** `backend/app/market/interface.py:12`, `backend/app/market/factory.py:19`
-
-Non-ASCII characters (em-dash `—` and arrow `→`) in existing docstrings have been double-encoded through a UTF-8 → CP1252 → UTF-8 round trip:
-
-- `interface.py` contains `\xc3\xa2\xe2\x82\xac\xe2\x80\x9d` where an em-dash `—` (U+2014, UTF-8 `\xe2\x80\x94`) was corrupted.
-- `factory.py` contains `\xc3\xa2\xe2\x80\xa0\xe2\x80\x99` where a right arrow `→` (U+2192, UTF-8 `\xe2\x86\x92`) was corrupted.
-
-Visible as garbage characters when viewing the source:
-```
-interface.py: "it reads from the cache â€”"   (should be "it reads from the cache —")
-factory.py:   "non-empty â†’ MassiveDataSource"  (should be "non-empty → MassiveDataSource")
-```
-
-**Root cause:** An editor or tool chain likely opened the file as CP1252, interpreted the UTF-8 multi-byte sequences as Windows-1252 codepoints, and re-saved as UTF-8, producing the double-encoding.
-
-**Severity:** Low. Docstrings/comments only. Python ignores them. But it indicates encoding instability in the toolchain that could corrupt real string values in the future.
-
-### 2.2 UTF-8 BOM still present in two source files
-
-**Files:** `backend/app/market/interface.py`, `backend/app/market/factory.py`
-
-Both files start with the three-byte UTF-8 BOM (`EF BB BF`). This was flagged in the previous review (§3.1) as a cross-platform concern. It was not addressed in this commit, and the encoding corruption above (2.1) was likely introduced when whatever tool last touched these files processed the BOM incorrectly.
-
-**Fix:** Re-save both files as UTF-8 without BOM. Running:
-```bash
-# In PowerShell:
-Get-Content interface.py | Set-Content interface.py -Encoding UTF8
-```
+| Path | Status | Description |
+|------|--------|-------------|
+| `.claude/settings.json` | Modified | Added `independent-reviewer@Sid-Tools` plugin |
+| `planning/REVIEW.md` | Modified | Rewritten to cover README rewrite |
+| `.claude-plugin/` | Untracked | Local plugin marketplace registration |
+| `.claude/agents/` | Untracked | `opencode-reviewer.md` agent definition |
+| `independent-reviewer/` | Untracked | Plugin directory with hooks and metadata |
 
 ---
 
-## 3. Issues Carried Forward (Unresolved from Previous Reviews)
+## 1. Modified Files
 
-### 3.1 `uv sync --dev` in backend/README.md
+### 1.1 `.claude/settings.json`
 
-**File:** `backend/README.md:25,48`
+**Change:** Added `"independent-reviewer@Sid-Tools": true` to `enabledPlugins`.
 
-`uv sync --dev` is not a valid uv flag. Should be `uv sync --extra dev`. This was flagged in the first review (§4.1) and remains unfixed.
-
-### 3.2 SSE generator lacks non-cancellation exception handling
-
-**File:** `stream.py:67-86`
-
-The `while True` loop only catches `asyncio.CancelledError`. An unexpected `Exception` from `price_cache.get_all()` or `json.dumps()` would silently close the SSE stream. PLAN.md §13 lists this as a recommended fix. Not addressed.
-
-### 3.3 Fragile rounding assertion in test_simulator.py
-
-**File:** `tests/market/test_simulator.py:128-131`
-
-```python
-if '.' in price_str:
-    decimal_part = price_str.split('.')[1]
-    assert len(decimal_part) <= 2
+```diff
++    "independent-reviewer@Sid-Tools": true
 ```
 
-`<= 2` allows 0 or 1 decimal places, which defeats the intent. PLAN.md §13 recommends replacing with `assert round(result["AAPL"], 2) == result["AAPL"]`. Not addressed.
+**Assessment:** Enables the independent-reviewer plugin. A one-line additive change — no side effects, no conflicts. Clean.
 
-### 3.4 Test accesses private attribute
+### 1.2 `planning/REVIEW.md`
 
-**File:** `tests/market/test_simulator.py:48`
+**Change:** The entire file was rewritten. It was previously a review of commit `32d12da` ("Fix pre-build blockers"). Now it reviews the README rewrite from commit `c66651e`.
 
-```python
-assert len(sim._tickers) == 1
-```
+**Assessment:** The new content is correct and well-structured, but it only covers the README changes. It does not cover:
+- The `.claude/settings.json` modification (1.1 above)
+- The untracked files (section 2 below)
 
-Should use `sim.get_tickers()`. PLAN.md §13 recommends this fix. Not addressed.
-
-### 3.5 `version` property reads without lock
-
-**File:** `cache.py:73-76`
-
-`_version` is incremented under `self._lock` in `update()` but read without the lock in the `version` property. GIL-safe in CPython. Informational only.
+The file is now somewhat self-referential (REVIEW.md reviewing REVIEW.md's own changes).
 
 ---
 
-## 4. New Observations
+## 2. Untracked Directories
 
-### 4.1 Committed REVIEW.md in the same commit as the fixes it reviews
+Three new directories exist on disk but are **not tracked by git**. They form a local code-review automation system.
 
-`planning/REVIEW.md` was modified in this same commit to document fixes from commit `1fbdd7b`. This is somewhat circular — the review document was committed alongside the code it reviews rather than as a separate review pass. Not a problem per se, but it means this review (of commit `32d12da`) is the first independent review of these changes.
+### 2.1 `.claude-plugin/marketplace.json`
 
-### 4.2 `db/` directory does not exist on disk
+Registers a plugin marketplace source `"Sid-Tools"` (author: Siddharth) with a single plugin `"independent-reviewer"` pointing at `./independent-reviewer`. This is how Claude discovers the plugin.
 
-The `.gitignore` now covers `db/*.db`, but the `db/` directory itself does not exist yet. A `db/.gitkeep` file should be committed (or the directory created at runtime by the app). Minor — the app can `mkdir` at startup.
+### 2.2 `.claude/agents/opencode-reviewer.md`
 
-### 4.3 No changes to tests
+An opencode agent definition that delegates code review by running:
+```
+opencode run "Please carry out a comprehensive code review of the latest commit
+and write your observations to planning/REVIEW.md"
+```
 
-The commit adds three new dependencies (`python-dotenv`, `litellm`, `aiosqlite`) but adds no tests or test infrastructure for them. Acceptable since they are integration dependencies, but worth noting that `litellm` and `aiosqlite` imports are currently untestable without a running app.
+**Notable:** This agent tells the *calling* AI not to review itself, but to delegate to a subprocess. This is the agent that triggered the current review session.
 
-### 4.4 Commit scope is well-focused
+### 2.3 `independent-reviewer/`
 
-The commit message accurately describes the changes, and each file change is atomic and relevant to the stated goal of fixing pre-build blockers. There are no stray or incidental changes.
+A full plugin directory containing:
+- `.claude-plugins/plugin.json` — Plugin metadata (name, version)
+- `hooks/` — Contains a `Stop` hook configuration that runs:
+  ```
+  opencode run "Review changes since last commit and write the results to a file called planning/REVIEW.md"
+  ```
+
+**This means:** Every time a Claude session stops, the review hook fires automatically, creating a recursive loop (the review session itself triggers another Stop event on completion).
+
+---
+
+## 3. Issues and Observations
+
+### 3.1 Recursive hook loop
+
+The `independent-reviewer/hooks/` Stop hook fires `opencode run "Review changes since last commit..."`. When that subprocess finishes, its own Stop event triggers the hook again. This creates an infinite or near-infinite recursive chain.
+
+**Suggested fix:** Either:
+- Remove the Stop hook and run reviews manually, or
+- Add a guard (e.g., check if REVIEW.md was just written and skip if so).
+
+### 3.2 Untracked tooling does not belong in the application repo
+
+`.claude-plugin/`, `.claude/agents/`, and `independent-reviewer/` are local Claude/opencode configuration. Consider whether they should be:
+- **Committed** (if the team uses this tooling) — add to `.gitignore` patterns as needed, or
+- **Gitignored** (if local-only) — add entries to `.gitignore`.
+
+Currently they are neither — they sit as untracked files, which is a middle ground that creates noise in `git status`.
+
+### 3.3 REVIEW.md is now self-modifying
+
+The REVIEW.md file was changed by the same review automation it documents. This is circular and makes it harder to track what was manually vs. automatically reviewed.
+
+### 3.4 No changes to application code
+
+All changes since the last commit are infrastructure/tooling only. No application source code (`backend/`, `tests/`, etc.) was modified.
 
 ---
 
@@ -123,12 +106,9 @@ The commit message accurately describes the changes, and each file change is ato
 
 | # | Issue | Severity | File(s) |
 |---|-------|----------|---------|
-| 2.1 | Mojibake (encoding corruption) in docstrings | Low | `interface.py:12`, `factory.py:19` |
-| 2.2 | UTF-8 BOM in two source files | Low | `interface.py`, `factory.py` |
-| 3.1 | `uv sync --dev` is wrong flag | Documentation | `backend/README.md:25,48` |
-| 3.2 | SSE generator unhandled `Exception` | Low | `stream.py:68` |
-| 3.3 | Fragile rounding assertion | Low | `test_simulator.py:128-131` |
-| 3.4 | Test accesses private attribute | Low | `test_simulator.py:48` |
-| 3.5 | `version` read outside lock | Info | `cache.py:74-76` |
+| 3.1 | Recursive Stop hook causes infinite review loop | Medium | `independent-reviewer/hooks/*` |
+| 3.2 | Untracked tooling files create git status noise | Low | `.claude-plugin/`, `.claude/agents/`, `independent-reviewer/` |
+| 3.3 | REVIEW.md is self-modifying (circular) | Low | `planning/REVIEW.md` |
+| 3.4 | No application code changes | Info | — |
 
-**Verdict:** The commit achieves its stated goal cleanly. The three blocking pre-build items are resolved. The encoding issues in `interface.py` and `factory.py` (2.1, 2.2) should be fixed before the next phase to prevent toolchain problems. All other items are low-severity.
+**Verdict:** The tracked changes are minimal and correct. The larger story is the untracked automation tooling that was introduced but not committed — and the recursive Stop hook that will cause repeated re-reviews unless addressed.
