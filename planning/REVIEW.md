@@ -1,6 +1,6 @@
 # Review — Changes Since Last Commit
 
-**Last commit:** `04576a0` — "Update REVIEW.md to reflect current working tree state"
+**HEAD:** `0d99c59` — "Add github_token to Claude workflow and update REVIEW.md"
 **Branch:** `main`
 **Review date:** 2026-06-11
 
@@ -8,24 +8,32 @@
 
 ## Summary
 
-Only **1 tracked change** since the last commit — an update to this file (`planning/REVIEW.md`).
+**3 files modified** (unstaged) since `0d99c59`:
 
 | Path | Status | Description |
 |------|--------|-------------|
-| `planning/REVIEW.md` | Modified | Updated to match the actual working tree state (the previous version incorrectly reported a clean tree) |
-
-No other tracked or untracked changes exist.
+| `.github/workflows/claude-code-review.yml` | Modified | Permissions upgraded from `read` to `write` for `contents`, `pull-requests`, and `issues` |
+| `.github/workflows/claude.yml` | Modified | Same permissions upgrade as above |
+| `planning/REVIEW.md` | Modified | This file — content updated to reflect current state |
 
 ---
 
 ## Detailed Changes
 
+### `.github/workflows/claude-code-review.yml` — Modified
+
+The `permissions` block was changed so that `contents`, `pull-requests`, and `issues` each went from `read` to `write`. This is needed because Claude posting PR comments requires `pull-requests: write`, and posting issue comments requires `issues: write`. The prior `read`-only scope caused GitHub to reject comment writes with "Resource not accessible by integration".
+
+### `.github/workflows/claude.yml` — Modified
+
+Identical permissions fix: `contents: read` → `write`, `pull-requests: read` → `write`, `issues: read` → `write`. The `id-token: write` and `actions: read` lines were left unchanged.
+
 ### `planning/REVIEW.md` — Modified
 
-The file was edited from its committed state (`c487ce1`) to correct the review content. Specifically, the section headers and body text were rewritten. No substantive project code was changed.
+Rewritten to document the current set of unstaged changes.
 
 ---
 
 ## Verdict
 
-No application code has changed. The sole modification is to the review artifact itself. The working tree otherwise matches HEAD.
+All changes are confined to CI/CD workflow permissions and the review artifact itself. No application source code was touched.
