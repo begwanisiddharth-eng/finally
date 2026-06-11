@@ -1,85 +1,64 @@
 # FinAlly — AI Trading Workstation
 
-## Project Specification
-
 ## 1. Vision
 
-FinAlly (Finance Ally) is a visually stunning AI-powered trading workstation that streams live market data, lets users trade a simulated portfolio, and integrates an LLM chat assistant that can analyze positions and execute trades on the user's behalf. It looks and feels like a modern Bloomberg terminal with an AI copilot.
-
-This is the capstone project for an agentic AI coding course. It is built entirely by Coding Agents demonstrating how orchestrated AI agents can produce a production-quality full-stack application. Agents interact through files in `planning/`.
+FinAlly (Finance Ally) is an AI-powered trading workstation that streams live market data, lets users trade a simulated portfolio, and integrates an LLM chat assistant that can analyze positions and execute trades on the user's behalf. It looks and feels like a modern Bloomberg terminal with an AI copilot.
 
 ## 2. User Experience
 
 ### First Launch
 
-The user runs a single start script. A browser opens to `http://localhost:8000`. No login, no signup. They immediately see:
-
-- A watchlist of 10 default tickers with live-updating prices in a grid
-- $10,000 in virtual cash
-- A dark, data-rich trading terminal aesthetic
-- An AI chat panel ready to assist
+The user runs a single start script. A browser opens to `http://localhost:8000`. No login, no signup. They immediately see a watchlist of 10 default tickers with live-updating prices, $10,000 in virtual cash, and an AI chat panel ready to assist.
 
 ### What the User Can Do
 
-- **Watch prices stream** — prices flash green (uptick) or red (downtick) with subtle CSS animations that fade
-- **View sparkline mini-charts** — price action beside each ticker in the watchlist, accumulated on the frontend from the SSE stream since page load (sparklines fill in progressively)
-- **Click a ticker** to see a larger detailed chart in the main chart area
-- **Buy and sell shares** — market orders only, instant fill at current price, no fees, no confirmation dialog
-- **Monitor their portfolio** — a heatmap (treemap) showing positions sized by weight and colored by P&L, plus a P&L chart tracking total portfolio value over time
-- **View a positions table** — ticker, quantity, average cost, current price, unrealized P&L, % change
-- **Chat with the AI assistant** — ask about their portfolio, get analysis, and have the AI execute trades and manage the watchlist through natural language
-- **Manage the watchlist** — add/remove tickers manually or via the AI chat
-- **Reset the portfolio** — restore $10,000 cash and clear all positions and trade history for a fresh start
+- **Watch prices stream** — prices flash green/red with CSS animations that fade over ~500ms
+- **View sparkline mini-charts** — accumulated from the SSE stream since page load
+- **Click a ticker** to see a larger chart in the main chart area
+- **Buy and sell shares** — market orders only, instant fill at current price, no fees, no confirmation
+- **Monitor their portfolio** — treemap heatmap (positions sized by weight, colored by P&L) + P&L chart
+- **View a positions table** — ticker, quantity, avg cost, current price, unrealized P&L, % change
+- **Chat with the AI assistant** — ask about the portfolio, get analysis, have the AI execute trades and manage the watchlist
+- **Manage the watchlist** — add/remove tickers manually or via AI chat
+- **Reset the portfolio** — restore $10,000 cash and clear all positions and trade history
 
 ### Visual Design
 
-- **Dark theme**: backgrounds around `#0d1117` or `#1a1a2e`, muted gray borders, no pure black
-- **Price flash animations**: brief green/red background highlight on price change, fading over ~500ms via CSS transitions
-- **Connection status indicator**: a small colored dot (green = connected, yellow = reconnecting, red = disconnected) visible in the header
-- **Professional, data-dense layout**: inspired by Bloomberg/trading terminals — every pixel earns its place
-- **Responsive but desktop-first**: optimized for wide screens, functional on tablet
+- **Dark theme**: backgrounds `#0d1117` / `#1a1a2e`, muted gray borders
+- **Price flash**: brief green/red background highlight on price change, fades via CSS transition
+- **Connection status**: colored dot in header (green = connected, yellow = reconnecting, red = disconnected)
+- **Desktop-first**: optimized for wide screens, functional on tablet
+- **Color scheme**: Accent Yellow `#ecad0a` · Blue Primary `#209dd7` · Purple Secondary `#753991` (submit buttons)
 
-### Color Scheme
-- Accent Yellow: `#ecad0a`
-- Blue Primary: `#209dd7`
-- Purple Secondary: `#753991` (submit buttons)
+---
 
-## 3. Architecture Overview
-
-### Single Process, Single Port
+## 3. Architecture
 
 ```
 ┌─────────────────────────────────────────────────┐
 │  Local Process (port 8000)                      │
-│                                                 │
 │  FastAPI (Python/uv)                            │
 │  ├── /api/*          REST endpoints             │
 │  ├── /api/stream/*   SSE streaming              │
-│  └── /*              Static file serving         │
-│                      (Next.js export)            │
-│                                                 │
-│  SQLite database (local file)                   │
+│  └── /*              Static files (Next.js)     │
+│  SQLite (db/finally.db)                         │
 │  Background task: market data polling/sim        │
 └─────────────────────────────────────────────────┘
 ```
 
-- **Frontend**: Next.js with TypeScript, built as a static export (`output: 'export'`), served by FastAPI as static files
-- **Backend**: FastAPI (Python), managed as a `uv` project
-- **Database**: SQLite, single file at `db/finally.db`, persisted as a plain local file
-- **Real-time data**: Server-Sent Events (SSE) — simpler than WebSockets, one-way server→client push, works everywhere
-- **AI integration**: LiteLLM → Groq (`groq/openai/gpt-oss-120b`) for fast inference, with structured outputs for trade execution
-- **Market data**: Environment-variable driven — simulator by default, real data via Massive API if key provided
-
-### Why These Choices
-
-| Decision | Rationale |
+| Stack choice | Rationale |
 |---|---|
-| SSE over WebSockets | One-way push is all we need; simpler, no bidirectional complexity, universal browser support |
-| Static Next.js export | Single origin, no CORS issues, one port, one process, simple deployment |
-| SQLite over Postgres | No auth = no multi-user = no need for a database server; self-contained, zero config |
-| No container runtime | Students run one script; no Docker install required, nothing to orchestrate |
-| uv for Python | Fast, modern Python project management; reproducible lockfile; what students should learn |
-| Market orders only | Eliminates order book, limit order logic, partial fills — dramatically simpler portfolio math |
+| SSE over WebSockets | One-way push is sufficient; simpler, universal browser support |
+| Static Next.js export | Single origin, no CORS, one port, one process |
+| SQLite over Postgres | Single-user, self-contained, zero config |
+| No container runtime | Students run one script; no Docker required |
+| uv for Python | Fast, modern, reproducible lockfile |
+| Market orders only | Eliminates order book / partial-fill complexity |
+
+- **Frontend**: Next.js + TypeScript, static export (`output: 'export'`), served by FastAPI
+- **Backend**: FastAPI, `uv` project
+- **AI**: LiteLLM → Groq (`groq/openai/gpt-oss-120b`), structured outputs
+- **Market data**: simulator by default; Massive (Polygon.io) REST API if `MASSIVE_API_KEY` is set
 
 ---
 
@@ -88,50 +67,33 @@ The user runs a single start script. A browser opens to `http://localhost:8000`.
 ```
 finally/
 ├── frontend/                 # Next.js TypeScript project (static export)
-├── backend/                  # FastAPI uv project (Python)
-│   └── db/                   # SQL schema files and seed logic (source-controlled)
-├── planning/                 # Project-wide documentation for agents
-│   ├── PLAN.md               # This document
-│   └── ...                   # Additional agent reference docs
+├── backend/                  # FastAPI uv project
+│   └── db/                   # SQL schema + seed logic (source-controlled)
+├── planning/                 # Agent reference docs
 ├── scripts/
-│   ├── start_mac.sh          # Build frontend, launch backend (macOS/Linux)
-│   ├── stop_mac.sh           # Stop the running backend (macOS/Linux)
-│   ├── start_windows.ps1     # Build frontend, launch backend (Windows PowerShell)
-│   └── stop_windows.ps1      # Stop the running backend (Windows PowerShell)
-├── test/                     # Playwright E2E tests
-│   ├── run_e2e.sh            # E2E test runner (macOS/Linux)
-│   └── run_e2e.ps1           # E2E test runner (Windows)
-├── db/                       # SQLite database file lives here at runtime (gitignored)
+│   ├── start_mac.sh / stop_mac.sh
+│   └── start_windows.ps1 / stop_windows.ps1
+├── test/
+│   ├── run_e2e.sh / run_e2e.ps1
+├── db/                       # SQLite file at runtime (gitignored)
 │   └── .gitkeep
-├── .env                      # Environment variables (gitignored, .env.example committed)
+├── .env                      # Gitignored; .env.example committed
 └── .gitignore
 ```
 
-### Key Boundaries
-
-- **`frontend/`** is a self-contained Next.js project. It knows nothing about Python. It talks to the backend via `/api/*` endpoints and `/api/stream/*` SSE endpoints. Internal structure is up to the Frontend Engineer agent.
-- **`backend/`** is a self-contained uv project with its own `pyproject.toml`. It owns all server logic including database initialization, schema, seed data, API routes, SSE streaming, market data, and LLM integration. Internal structure is up to the Backend/Market Data agents.
-- **`backend/db/`** contains SQL schema files and seed logic checked into source control. The backend uses these to lazily initialize the database on first run.
-- **`db/`** at the top level is where the SQLite file (`finally.db`) lives at runtime. It is created by the backend on first run and persists across restarts. Gitignored via `db/*.db`; `db/.gitkeep` keeps the directory tracked.
-- **`planning/`** contains project-wide documentation, including this plan. All agents reference files here as the shared contract.
-- **`test/`** contains Playwright E2E tests and the `run_e2e.sh` / `run_e2e.ps1` scripts that build the app, launch it, and run the full suite.
-- **`scripts/`** contains start/stop scripts that build the frontend and launch/stop the backend process.
+- `frontend/` talks to the backend only via `/api/*` and `/api/stream/*`
+- `backend/` owns all server logic: DB init, API routes, SSE, market data, LLM
+- `db/finally.db` is created on first run, persists across restarts
+- `test/` scripts build the app, launch it with `LLM_MOCK=true`, and run the Playwright suite
 
 ---
 
 ## 5. Environment Variables
 
 ```bash
-# Required: Groq API key for LLM chat functionality
-GROQ_API_KEY=your-groq-api-key-here
-
-# Optional: Massive (Polygon.io) API key for real market data
-# If not set, the built-in market simulator is used (recommended for most users)
-MASSIVE_API_KEY=
-
-# Optional: Set to "true" for deterministic mock LLM responses (testing)
-# Read as a string — check with: os.getenv("LLM_MOCK", "false").lower() == "true"
-LLM_MOCK=false
+GROQ_API_KEY=your-groq-api-key-here   # Required: LLM chat
+MASSIVE_API_KEY=                        # Optional: real market data (simulator used if unset)
+LLM_MOCK=false                          # Set "true" for deterministic mock responses in tests
 ```
 
 The backend reads `.env` from the project root on startup.
@@ -142,153 +104,84 @@ The backend reads `.env` from the project root on startup.
 
 ### Two Implementations, One Interface
 
-Both the simulator and the Massive client implement the same abstract interface. The backend selects which to use based on `MASSIVE_API_KEY`. All downstream code (SSE streaming, price cache, frontend) is agnostic to the source.
+Both implement the same `MarketDataSource` ABC. The backend selects based on `MASSIVE_API_KEY`. All downstream code is agnostic to the source.
 
-### Simulator (Default)
+**Simulator (default)** — GBM prices with configurable drift/volatility, correlated moves, random 2–5% shock events, 500ms update interval, in-process background task.
 
-- Generates prices using geometric Brownian motion (GBM) with configurable drift and volatility per ticker
-- Updates at ~500ms intervals
-- Correlated moves across tickers (e.g., tech stocks move together)
-- Occasional random "events" — sudden 2-5% moves on a ticker for drama
-- Starts from realistic seed prices (e.g., AAPL ~$190, GOOGL ~$175, etc.)
-- Runs as an in-process background task — no external dependencies
+**Massive API (optional)** — REST polling; 15s interval on free tier (5 req/min), 2–15s on paid tiers.
 
-### Massive API (Optional)
+### Price Cache
 
-- REST API polling (not WebSocket) — simpler, works on all tiers
-- Polls for all tickers in the system on a configurable interval
-- Free tier (5 calls/min): poll every 15 seconds
-- Paid tiers: poll every 2-15 seconds depending on tier
-- Parses REST response into the same format as the simulator
+One background task writes to an in-memory `PriceCache`; all consumers read from it.
 
-### Shared Price Cache
-
-- A single background task (simulator or Massive poller) writes to an in-memory price cache
-- The cache holds per ticker: latest price, previous price, session-open price (price at first observation this session), and timestamp
-- **Session** = backend process lifetime; the session-open price resets each time the backend restarts. It is not tied to calendar day or midnight.
-- `session_open` is stored in a separate dict within `PriceCache`, set the **first time** a ticker is updated per process lifetime and **never overwritten** thereafter. It must be exposed via a `get_session_open(ticker)` method and included in every SSE event and `GET /api/watchlist` response.
-- The session-open price enables the frontend to display change since session start
-- SSE streams read from this cache and push updates to connected clients
+- Per ticker: latest price, previous price, `session_open` (first price this process lifetime), timestamp
+- `session_open` is set once on first update and never overwritten; resets on backend restart
+- `version` counter bumped on every update — SSE generator uses it for change detection
 
 ### SSE Streaming
 
 - Endpoint: `GET /api/stream/prices`
-- Long-lived SSE connection; client uses native `EventSource` API
-- Server pushes price updates for **all tickers in the system** at a regular cadence (~500ms)
-- Each SSE `data:` line is a **single-ticker JSON object** — do not batch multiple tickers into one event. One event per ticker per cadence tick.
-- Fields: `ticker`, `price`, `prev_price`, `session_open`, `change_pct`, `direction`, `timestamp`. The names `prev_price` and `change_pct` are the exact wire contract and must match the `GET /api/watchlist` response exactly.
-- The `timestamp` field is an ISO 8601 string (e.g., `"2026-01-01T10:00:00Z"`), not a Unix timestamp float.
-- Client handles reconnection automatically (EventSource has built-in retry)
-- **Scalability note**: pushing all tickers every ~500ms is fine for the default 10–20 ticker watchlist. At 50+ tickers, delta-only updates or per-ticker SSE topics should be considered (future optimization, not in scope).
+- One `data:` event per ticker per ~500ms cadence — never batched
+- Wire fields: `ticker`, `price`, `prev_price`, `session_open`, `change_pct`, `direction`, `timestamp`
+- `prev_price` and `change_pct` are the exact field names (match `GET /api/watchlist`)
+- `timestamp` is ISO 8601 string, not a Unix float
+- `retry: 1000` — browser reconnects after 1s if dropped
 
 ---
 
 ## 7. Database
 
-### SQLite with Lazy Initialization
+SQLite, lazy-initialized on first run (schema + seed data created automatically). Enable WAL mode on connection open.
 
-The backend checks for the SQLite database on startup. If the file doesn't exist or tables are missing, it creates the schema and seeds default data — no separate migration step, no manual setup.
-
-Enable WAL mode (`PRAGMA journal_mode=WAL`) on connection open. This allows the background snapshot writer and trade-execution writes to coexist without blocking each other, since WAL permits concurrent readers and one writer.
-
-**Single-user design**: every table has a `user_id` column defaulting to `"default"`. This is a forward-compatibility stub — it is never varied in this app. Multi-user support would be trivial to add later but is explicitly out of scope.
+Every table has `user_id TEXT DEFAULT "default"` — a forward-compatibility stub, never varied.
 
 ### Schema
 
-**users_profile** — User state (cash balance)
-- `user_id` TEXT PRIMARY KEY (default: `"default"`)
-- `cash_balance` REAL (default: `10000.0`)
-- `created_at` TEXT (ISO timestamp)
+**users_profile** — `user_id` PK, `cash_balance` REAL (10000.0), `created_at`
 
-**watchlist** — Tickers the user is watching
-- `id` TEXT PRIMARY KEY (UUID)
-- `user_id` TEXT (default: `"default"`)
-- `ticker` TEXT
-- `added_at` TEXT (ISO timestamp)
-- UNIQUE constraint on `(user_id, ticker)`
+**watchlist** — `id` UUID PK, `user_id`, `ticker`, `added_at`; UNIQUE `(user_id, ticker)`
 
-**positions** — Current holdings (one row per ticker per user)
-- `id` TEXT PRIMARY KEY (UUID)
-- `user_id` TEXT (default: `"default"`)
-- `ticker` TEXT
-- `quantity` REAL (fractional shares supported; minimum increment 0.001)
-- `avg_cost` REAL
-- `updated_at` TEXT (ISO timestamp)
-- UNIQUE constraint on `(user_id, ticker)`
+**positions** — `id` UUID PK, `user_id`, `ticker`, `quantity` REAL, `avg_cost` REAL, `updated_at`; UNIQUE `(user_id, ticker)`. Fractional shares supported (min 0.001).
 
-**trades** — Trade history (append-only log)
-- `id` TEXT PRIMARY KEY (UUID)
-- `user_id` TEXT (default: `"default"`)
-- `ticker` TEXT
-- `side` TEXT (`"buy"` or `"sell"`)
-- `quantity` REAL (fractional shares supported; minimum increment 0.001)
-- `price` REAL
-- `executed_at` TEXT (ISO timestamp)
+**trades** — `id` UUID PK, `user_id`, `ticker`, `side` ("buy"/"sell"), `quantity` REAL, `price` REAL, `executed_at`. Append-only.
 
-**portfolio_snapshots** — Portfolio value over time (for P&L chart). Recorded every 30 seconds by a background task, and immediately after each trade execution.
-- `id` TEXT PRIMARY KEY (UUID)
-- `user_id` TEXT (default: `"default"`)
-- `total_value` REAL
-- `recorded_at` TEXT (ISO timestamp)
+**portfolio_snapshots** — `id` UUID PK, `user_id`, `total_value` REAL, `recorded_at`. Written every 30s by background task and immediately after each trade.
 
-**chat_messages** — Conversation history with LLM
-- `id` TEXT PRIMARY KEY (UUID)
-- `user_id` TEXT (default: `"default"`)
-- `role` TEXT (`"user"` or `"assistant"`)
-- `content` TEXT
-- `actions` TEXT (JSON — serialized object containing `trades`, `watchlist_changes`, `trade_results`, `watchlist_results` as returned by `POST /api/chat`; null for user messages and assistant messages with no actions)
-- `created_at` TEXT (ISO timestamp)
+**chat_messages** — `id` UUID PK, `user_id`, `role` ("user"/"assistant"), `content`, `actions` (JSON or null), `created_at`
 
-### Default Seed Data
+### Seed Data
 
-- One user profile: `user_id="default"`, `cash_balance=10000.0`
-- Ten watchlist entries: AAPL, GOOGL, MSFT, AMZN, TSLA, NVDA, META, JPM, V, NFLX
+- `users_profile`: `user_id="default"`, `cash_balance=10000.0`
+- `watchlist`: AAPL, GOOGL, MSFT, AMZN, TSLA, NVDA, META, JPM, V, NFLX
 
 ---
 
 ## 8. API Endpoints
 
-### Market Data
+### Endpoints
+
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/stream/prices` | SSE stream of live price updates |
+| GET | `/api/stream/prices` | SSE live price stream |
+| GET | `/api/portfolio` | Positions, cash, total value, P&L |
+| POST | `/api/portfolio/trade` | Execute trade: `{ticker, quantity, side}` |
+| GET | `/api/portfolio/history` | Portfolio value snapshots (P&L chart) |
+| POST | `/api/portfolio/reset` | Reset to $10k, clear positions + trades |
+| GET | `/api/watchlist` | Watchlist tickers with latest prices |
+| POST | `/api/watchlist` | Add ticker: `{ticker}` |
+| DELETE | `/api/watchlist/{ticker}` | Remove ticker |
+| POST | `/api/chat` | Send `{message}`, get structured response |
+| GET | `/api/health` | Health check (`SELECT 1` on DB) |
 
-### Portfolio
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/portfolio` | Current positions, cash balance, total value, unrealized P&L |
-| POST | `/api/portfolio/trade` | Execute a trade: `{ticker, quantity, side}` |
-| GET | `/api/portfolio/history` | Portfolio value snapshots over time (for P&L chart) |
-| POST | `/api/portfolio/reset` | Reset to $10,000 cash, clear all positions and trade history |
+`POST /api/watchlist` validates 1–10 uppercase alphanumeric characters; does not verify the ticker exists externally.
 
-### Watchlist
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/watchlist` | Current watchlist tickers with latest prices |
-| POST | `/api/watchlist` | Add a ticker: `{ticker}` |
-| DELETE | `/api/watchlist/{ticker}` | Remove a ticker |
+### Error Envelope
 
-`GET /api/watchlist` provides the initial snapshot on page load; live price updates after that arrive via `/api/stream/prices`.
-
-`POST /api/watchlist` validates that the ticker is a non-empty string of 1–10 uppercase alphanumeric characters. It does **not** verify the ticker exists in any external registry — the simulator accepts any valid ticker and will begin generating prices for it immediately.
-
-### Chat
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/chat` | Send `{message}`, receive structured response with executed actions |
-
-### System
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/health` | Health check |
-
-### Standard Error Envelope
-
-All non-2xx responses use this shape:
 ```json
 {"ok": false, "error": "Human-readable message"}
 ```
-`POST /api/portfolio/trade` uses `400`. Other endpoints use `400` for bad input, `404` for not found, `500` for unexpected errors.
+
+`400` for bad input / failed trades, `404` for not found, `500` for unexpected errors.
 
 ### Response Shapes
 
@@ -298,66 +191,32 @@ All non-2xx responses use this shape:
   "cash_balance": 8500.00,
   "total_value": 11234.56,
   "positions": [
-    {
-      "ticker": "AAPL",
-      "quantity": 10,
-      "avg_cost": 190.00,
-      "current_price": 195.50,
-      "market_value": 1955.00,
-      "unrealized_pnl": 55.00,
-      "pnl_pct": 2.89
-    }
+    {"ticker": "AAPL", "quantity": 10, "avg_cost": 190.00,
+     "current_price": 195.50, "market_value": 1955.00,
+     "unrealized_pnl": 55.00, "pnl_pct": 2.89}
   ]
 }
 ```
 
 **`GET /api/watchlist`**
 ```json
-[
-  {
-    "ticker": "AAPL",
-    "price": 195.50,
-    "prev_price": 194.20,
-    "session_open": 190.00,
-    "change_pct": 2.89
-  }
-]
+[{"ticker": "AAPL", "price": 195.50, "prev_price": 194.20, "session_open": 190.00, "change_pct": 2.89}]
 ```
 
 **`GET /api/portfolio/history`**
 ```json
-[
-  {"recorded_at": "2026-01-01T10:00:00Z", "total_value": 10000.00},
-  {"recorded_at": "2026-01-01T10:00:30Z", "total_value": 10045.50}
-]
+[{"recorded_at": "2026-01-01T10:00:00Z", "total_value": 10000.00}]
 ```
 
-**`POST /api/portfolio/trade`** — request: `{ticker, quantity, side}`
-
-Success `200`:
+**`POST /api/portfolio/trade`** — success `200` / error `400`
 ```json
-{
-  "ok": true,
-  "ticker": "AAPL",
-  "side": "buy",
-  "quantity": 10,
-  "price": 195.50,
-  "executed_at": "2026-01-01T10:00:00Z",
-  "cash_balance": 8544.00
-}
-```
-Error `400`:
-```json
-{"ok": false, "error": "Insufficient cash"}
+{"ok": true, "ticker": "AAPL", "side": "buy", "quantity": 10,
+ "price": 195.50, "executed_at": "2026-01-01T10:00:00Z", "cash_balance": 8544.00}
 ```
 
-**`POST /api/portfolio/reset`**
-```json
-{"ok": true}
-```
-Clears: positions, trades, portfolio_snapshots. Restores cash_balance to 10000.0. Chat history is preserved.
+**`POST /api/portfolio/reset`** — `{"ok": true}`. Clears positions, trades, snapshots; restores cash to 10000.0. Chat history preserved.
 
-**`POST /api/chat`** — request: `{message}`
+**`POST /api/chat`**
 ```json
 {
   "message": "I've bought 10 shares of AAPL for you.",
@@ -368,178 +227,113 @@ Clears: positions, trades, portfolio_snapshots. Restores cash_balance to 10000.0
     {"ticker": "ZZZZ", "side": "buy", "quantity": 5, "ok": false, "error": "Insufficient cash"}
   ],
   "watchlist_results": [
-    {"ticker": "PYPL", "action": "add", "ok": true},
-    {"ticker": "???", "action": "add", "ok": false, "error": "Invalid ticker"}
+    {"ticker": "PYPL", "action": "add", "ok": true}
   ]
 }
 ```
 
-**`GET /api/health`**
+**SSE event**
 ```json
-{"status": "ok"}
-```
-Returns `200` if the process is running and the DB is reachable (simple `SELECT 1` check).
-
-**SSE event** (`GET /api/stream/prices`)
-```json
-{
-  "ticker": "AAPL",
-  "price": 195.50,
-  "prev_price": 194.20,
-  "session_open": 190.00,
-  "change_pct": 2.89,
-  "direction": "up",
-  "timestamp": "2026-01-01T10:00:00Z"
-}
+{"ticker": "AAPL", "price": 195.50, "prev_price": 194.20, "session_open": 190.00,
+ "change_pct": 2.89, "direction": "up", "timestamp": "2026-01-01T10:00:00Z"}
 ```
 
 ---
 
 ## 9. LLM Integration
 
-See `backend/CLAUDE.md` for the implementation instruction (which skill and model to use).
+See `backend/CLAUDE.md` for model and skill details.
 
-### How It Works
+### Flow
 
-When the user sends a chat message, the backend:
-
-1. Loads the user's current portfolio context (cash, positions with P&L, watchlist with live prices, total portfolio value)
-2. Loads the most recent 20 messages of conversation history from the `chat_messages` table
-3. Constructs a prompt with a system message, portfolio context, conversation history, and the user's new message
-4. Calls the LLM via LiteLLM → Groq, requesting structured output
-5. Parses the complete structured JSON response
-6. Auto-executes any trades or watchlist changes specified in the response
-7. Stores the message and executed actions in `chat_messages`
-8. Returns the complete JSON response to the frontend (no token-by-token streaming — Groq inference is fast enough that a loading indicator is sufficient)
+1. Load portfolio context (cash, positions with P&L, watchlist with live prices)
+2. Load last 20 messages from `chat_messages`
+3. Construct prompt: system message + portfolio context + history + user message
+4. Call LLM via LiteLLM → Groq, request structured output
+5. Auto-execute any trades and watchlist changes (same validation path as `POST /api/portfolio/trade`)
+6. Store message + actions in `chat_messages`
+7. Return full JSON response (no streaming — loading indicator is sufficient)
 
 ### Structured Output Schema
 
-The LLM responds with JSON matching this schema:
-
 ```json
 {
-  "message": "Your conversational response to the user",
-  "trades": [
-    {"ticker": "AAPL", "side": "buy", "quantity": 10.0}
-  ],
-  "watchlist_changes": [
-    {"ticker": "PYPL", "action": "add"}
-  ]
+  "message": "Conversational response shown to user",
+  "trades": [{"ticker": "AAPL", "side": "buy", "quantity": 10.0}],
+  "watchlist_changes": [{"ticker": "PYPL", "action": "add"}]
 }
 ```
 
-- `message` (required): The conversational text shown to the user
-- `trades` (optional): Array of trades to auto-execute, routed through the same shared trade-validation/execution function used by `POST /api/portfolio/trade` — one code path, no duplicated checks. `quantity` is a positive float (fractional shares supported, minimum 0.001).
-- `watchlist_changes` (optional): Array of watchlist modifications; `action` is `"add"` or `"remove"`
-
-### Auto-Execution
-
-Trades specified by the LLM execute automatically — no confirmation dialog. It's a simulated environment, so the stakes are zero; this creates an impressive, fluid demo and demonstrates agentic AI capabilities.
-
-If a trade fails validation (e.g., insufficient cash), the error is included in the chat response so the LLM can inform the user.
+`trades` and `watchlist_changes` are optional. `quantity` is a positive float, min 0.001.
 
 ### System Prompt Guidance
 
-The LLM should be prompted as "FinAlly, an AI trading assistant" with instructions to:
-- Analyze portfolio composition, risk concentration, and P&L
-- Suggest trades with reasoning
-- Execute trades when the user asks or agrees
-- Manage the watchlist proactively
-- Be concise and data-driven in responses
-- Always respond with valid structured JSON
+Prompt the LLM as "FinAlly, an AI trading assistant." It should: analyze portfolio composition, risk, and P&L; suggest and execute trades when asked; manage the watchlist proactively; be concise and data-driven; always respond with valid structured JSON.
 
-### Rate Limiting
+### Mock Mode
 
-The frontend disables the chat submit button while a request is in flight (one request at a time). This is sufficient to prevent accidental Groq quota exhaustion in normal use — no server-side rate limiter needed for this single-user demo.
-
-### LLM Mock Mode
-
-When `LLM_MOCK=true`, the backend returns deterministic mock responses instead of calling Groq, enabling fast, reproducible E2E tests and development without an API key.
+`LLM_MOCK=true` returns deterministic mock responses — no API key needed, used for E2E tests.
 
 ---
 
-## 10. Frontend Design
+## 10. Frontend
 
-### Layout
+### Layout Elements
 
-The frontend is a single-page application with a dense, terminal-inspired layout. The specific component architecture and layout system is up to the Frontend Engineer, but the UI should include these elements:
+- **Watchlist panel** — ticker, price (flashing on change), session change %, sparkline (SSE-accumulated)
+- **Main chart area** — selected ticker price history, fills progressively from SSE data
+- **Portfolio heatmap** — treemap: positions sized by weight, colored by P&L
+- **P&L chart** — total portfolio value over time from `portfolio_snapshots`
+- **Positions table** — ticker, quantity, avg cost, current price, unrealized P&L, % change
+- **Trade bar** — ticker + quantity inputs, buy/sell buttons, reset button
+- **AI chat panel** — docked sidebar: message input, scrolling history, loading indicator, inline trade confirmations
+- **Header** — live total value, connection status dot, cash balance
 
-- **Watchlist panel** — grid/table of watched tickers with: ticker symbol, current price (flashing green/red on change), session change %, and a sparkline mini-chart (accumulated from SSE since page load)
-- **Main chart area** — larger chart for the currently selected ticker showing price over time, built from SSE data accumulated since page load (chart starts empty and fills progressively). Clicking a ticker in the watchlist selects it.
-- **Portfolio heatmap** — treemap visualization where each rectangle is a position, sized by portfolio weight, colored by P&L (green = profit, red = loss)
-- **P&L chart** — line chart showing total portfolio value over time, using data from `portfolio_snapshots`
-- **Positions table** — tabular view of all positions: ticker, quantity, avg cost, current price, unrealized P&L, % change
-- **Trade bar** — simple input area: ticker field, quantity field, buy button, sell button. Includes a reset button to restore the starting balance.
-- **AI chat panel** — docked/collapsible sidebar. Message input, scrolling conversation history, loading indicator while waiting for LLM response. Trade executions and watchlist changes shown inline as confirmations.
-- **Header** — portfolio total value (updating live), connection status indicator, cash balance
+### Technical Choices
 
-### Technical Notes
-
-- Use `EventSource` for SSE connection to `/api/stream/prices`
-- **Charting library: Lightweight Charts** (TradingView) — canvas-based, purpose-built for financial time series, matches the terminal aesthetic. Do not use Recharts (SVG-based, not suited for high-frequency updates).
-- Price flash effect: on receiving a new price, briefly apply a CSS class with background color transition, then remove it
-- All API calls go to the same origin (`/api/*`) — no CORS configuration needed
-- Tailwind CSS for styling with a custom dark theme
-- **State management: Zustand** — lightweight, no boilerplate, easy to share SSE price state, positions, and chat history across components without prop drilling
-- **Known limitation**: sparkline data is accumulated in memory from SSE since page load and is lost on refresh. This is intentional for simplicity; a `price_history` table would be needed for persistence.
+- `EventSource` for SSE (`/api/stream/prices`)
+- **Charting: Lightweight Charts** (TradingView) — canvas-based, built for financial time series. Not Recharts.
+- Price flash: CSS class applied on price change, removed after transition
+- **Tailwind CSS** with custom dark theme
+- **Zustand** for state management — SSE prices, positions, chat history shared across components
+- All API calls to same origin (`/api/*`) — no CORS needed
+- Sparkline data is in-memory only; lost on refresh (intentional)
 
 ---
 
-## 11. Running & Deployment
+## 11. Scripts & Database
 
-The start scripts build the frontend static export and launch the FastAPI backend directly via `uv` on port 8000. See §3 for the architecture diagram.
+**Start scripts** (`scripts/start_mac.sh` / `scripts/start_windows.ps1`):
+1. `npm install && npm run build` in `frontend/`
+2. `uv sync` in `backend/`
+3. Launch FastAPI on port 8000; open browser (pass `--no-browser` to skip)
 
-### Start/Stop Scripts
+**Stop scripts** leave `db/finally.db` untouched.
 
-**`scripts/start_mac.sh`** (macOS/Linux):
-- Builds the frontend static export (`npm install && npm run build`)
-- Installs backend dependencies (`uv sync`)
-- Launches the backend and prints the URL; opens the browser by default (pass `--no-browser` to skip)
-
-**`scripts/stop_mac.sh`** (macOS/Linux):
-- Stops the running backend process
-- Leaves `db/finally.db` untouched (data persists)
-
-**`scripts/start_windows.ps1`** / **`scripts/stop_windows.ps1`**: PowerShell equivalents.
-
-All scripts are idempotent — safe to run multiple times.
-
-### Database
-
-The SQLite database persists at `db/finally.db`. The backend creates and seeds it on first run — no separate setup step required.
+`db/finally.db` is created and seeded on first run. No separate migration step.
 
 ---
 
-## 12. Testing Strategy
+## 12. Testing
 
-### Unit Tests (within `frontend/` and `backend/`)
+### Backend (pytest in `backend/`)
 
-**Backend (pytest)**:
-- Market data: simulator generates valid prices, GBM math is correct, Massive API response parsing works, both implementations conform to the abstract interface
-- Portfolio: trade execution logic, P&L calculations, edge cases (selling more than owned, buying with insufficient cash, selling at a loss)
-- LLM: structured output parsing handles all valid schemas, graceful handling of malformed responses, trade validation within chat flow
-- API routes: correct status codes, response shapes, error handling
+- Market data: GBM math, simulator prices, Massive response parsing, both sources conform to ABC
+- Portfolio: trade execution, P&L calculations, edge cases (insufficient cash, oversell, loss)
+- LLM: structured output parsing, malformed response handling, trade validation in chat flow
+- API routes: status codes, response shapes, error handling
 
-**Frontend (React Testing Library or similar)**:
+### Frontend (React Testing Library)
+
 - Component rendering with mock data
-- Price flash animation triggers correctly on price changes
-- Watchlist CRUD operations
-- Portfolio display calculations
-- Chat message rendering and loading state
+- Price flash triggers on price change
+- Watchlist CRUD, portfolio calculations, chat rendering
 
-### E2E Tests (in `test/`)
+### E2E (Playwright in `test/`)
 
-**Entry points**: `test/run_e2e.sh` (macOS/Linux) and `test/run_e2e.ps1` (Windows). Each script builds the frontend, launches the backend with `LLM_MOCK=true`, and runs Playwright against `http://localhost:8000`.
+Runner: `test/run_e2e.sh` / `test/run_e2e.ps1` — builds app, starts backend with `LLM_MOCK=true`, runs against `http://localhost:8000`.
 
-**Key Scenarios**:
-- Fresh start: default watchlist appears, $10k balance shown, prices are streaming
-- Add and remove a ticker from the watchlist
-- Buy shares: cash decreases, position appears, portfolio updates
-- Sell shares: cash increases, position updates or disappears
-- Portfolio reset: cash restores to $10k, positions cleared
-- Portfolio visualization: heatmap renders with correct colors, P&L chart has data points
-- AI chat (mocked): send a message, receive a response, trade execution appears inline
-- SSE resilience: disconnect and verify reconnection
+Scenarios: fresh start, add/remove ticker, buy/sell shares, portfolio reset, heatmap + P&L chart, AI chat (mocked), SSE reconnection.
 
 ---
 
@@ -547,44 +341,26 @@ The SQLite database persists at `db/finally.db`. The backend creates and seeds i
 
 ### Market Data — Complete
 
-`backend/app/market/` is fully built, reviewed, and in sync with all planning specifications.
+`backend/app/market/` — 79 tests pass, 0 fail. Ruff clean.
 
-**Tests**: 79 pass, 0 fail. Ruff clean.
+| Module | Tests |
+|---|---|
+| `models.py` | 11 |
+| `cache.py` | 18 |
+| `simulator.py` — GBMSimulator | 17 |
+| `simulator.py` — SimulatorDataSource | 9 |
+| `massive_client.py` | 13 |
+| `factory.py` | 7 |
+| `stream.py` | 0 — no unit tests (covered by E2E) |
+| `interface.py`, `seed_prices.py`, `__init__.py` | covered above |
 
-| Module | Status | Tests |
-|---|---|---|
-| `models.py` | Complete | 11 |
-| `cache.py` | Complete | 18 |
-| `simulator.py` (GBMSimulator) | Complete | 17 |
-| `simulator.py` (SimulatorDataSource) | Complete | 9 |
-| `massive_client.py` | Complete | 13 |
-| `factory.py` | Complete | 7 |
-| `stream.py` | Complete — **no unit tests** | 0 |
-| `interface.py`, `seed_prices.py`, `__init__.py` | Complete | covered above |
-
-**Known gap**: `stream.py` (`create_stream_router`, `_generate_events`) has no dedicated unit tests. The SSE behaviour is exercised by the E2E suite when built; add unit tests using FastAPI's `TestClient` or `httpx.AsyncClient` with an async generator mock if coverage is required before E2E.
-
-**Spec conformance** (reviewed against `planning/MASSIVE_API.md`, `planning/MARKET_INTERFACE.md`, `planning/MARKET_SIMULATOR.md`):
-
-- `PriceCache`: thread-safe, `version` counter, `session_open` set on first update and never overwritten, all methods present ✓
-- `PriceUpdate`: frozen dataclass, `to_dict()` emits exact wire names (`prev_price`, `change_pct`, ISO-8601 `timestamp`) ✓
-- `MarketDataSource` ABC: all five lifecycle methods implemented by both data sources ✓
-- `SimulatorDataSource`: cache seeded immediately in `start()` and `add_ticker()`; `dt` derived from interval ✓
-- `MassiveDataSource`: `asyncio.to_thread()` for sync client; immediate first poll; ms→s conversion; error isolation per snapshot and per poll cycle ✓
-- `create_market_data_source`: strips and checks `MASSIVE_API_KEY`, returns correct type ✓
-- SSE stream: one event per ticker per tick; `retry: 1000`; stops on disconnect; `session_open` included in every event ✓
-- Timestamp sentinel: `if timestamp is not None` (not falsy) — `timestamp=0.0` is preserved correctly ✓
-
-**Planning documents** (in `planning/`):
-- `MASSIVE_API.md` — Massive (Polygon.io) REST API reference with code examples, v2 vs v3 comparison, error handling
-- `MARKET_INTERFACE.md` — Unified Python API design: `PriceUpdate`, `PriceCache`, `MarketDataSource` ABC, both implementations, factory, SSE wiring
-- `MARKET_SIMULATOR.md` — GBM math, Cholesky correlation, random events, seed prices, simulator implementation
+Planning docs: `MARKET_INTERFACE.md`, `MARKET_SIMULATOR.md`, `MASSIVE_API.md` — all in sync with the implementation.
 
 ### Remaining Components — Not Yet Built
 
-- **Portfolio & watchlist API** (`GET/POST /api/portfolio`, `POST /api/portfolio/trade`, `GET/POST/DELETE /api/watchlist`, etc.)
-- **Chat / LLM integration** (`POST /api/chat`, LiteLLM → Groq, structured output, auto-execution)
-- **Database layer** (SQLite schema, lazy init, WAL mode, seed data)
-- **Frontend** (Next.js static export, Zustand, Lightweight Charts, Tailwind)
-- **Start/stop scripts** (`scripts/`)
-- **E2E tests** (`test/`)
+- **Database layer** — SQLite schema, lazy init, WAL mode, seed data
+- **Portfolio & watchlist API** — `GET/POST /api/portfolio`, `POST /api/portfolio/trade`, `GET/POST/DELETE /api/watchlist`
+- **Chat / LLM integration** — `POST /api/chat`, LiteLLM → Groq, structured output, auto-execution
+- **Frontend** — Next.js static export, Zustand, Lightweight Charts, Tailwind
+- **Start/stop scripts** — `scripts/`
+- **E2E tests** — `test/`

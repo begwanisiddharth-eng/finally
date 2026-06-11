@@ -285,6 +285,7 @@ class MassiveDataSource(MarketDataSource):
         ticker = ticker.upper().strip()
         if ticker not in self._tickers:
             self._tickers.append(ticker)
+            logger.info("Massive: added ticker %s (will appear on next poll)", ticker)
 
     async def remove_ticker(self, ticker: str) -> None:
         ticker = ticker.upper().strip()
@@ -364,7 +365,8 @@ class SimulatorDataSource(MarketDataSource):
         self._task: asyncio.Task | None = None
 
     async def start(self, tickers: list[str]) -> None:
-        self._sim = GBMSimulator(tickers=tickers, ...)
+        dt = self._interval / GBMSimulator.TRADING_SECONDS_PER_YEAR
+        self._sim = GBMSimulator(tickers=tickers, dt=dt, event_probability=self._event_prob)
         # Seed the cache immediately so SSE has data on first connect
         for ticker in tickers:
             price = self._sim.get_price(ticker)
@@ -395,6 +397,8 @@ See `MARKET_SIMULATOR.md` for `GBMSimulator` internals.
 import os
 from .cache import PriceCache
 from .interface import MarketDataSource
+from .massive_client import MassiveDataSource
+from .simulator import SimulatorDataSource
 
 
 def create_market_data_source(price_cache: PriceCache) -> MarketDataSource:
@@ -408,10 +412,8 @@ def create_market_data_source(price_cache: PriceCache) -> MarketDataSource:
     api_key = os.environ.get("MASSIVE_API_KEY", "").strip()
 
     if api_key:
-        from .massive_client import MassiveDataSource
         return MassiveDataSource(api_key=api_key, price_cache=price_cache)
     else:
-        from .simulator import SimulatorDataSource
         return SimulatorDataSource(price_cache=price_cache)
 ```
 
