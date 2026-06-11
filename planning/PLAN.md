@@ -545,6 +545,46 @@ The SQLite database persists at `db/finally.db`. The backend creates and seeds i
 
 ## 13. Build Status
 
-**Market data** (`backend/app/market/`) — complete. 79 tests pass, ruff clean. All spec-required functionality is implemented: `PriceCache`, `GBMSimulator`, `SimulatorDataSource`, `MassiveDataSource`, SSE streaming (`/api/stream/prices`), session-open tracking.
+### Market Data — Complete
 
-**Portfolio, watchlist, chat, frontend, scripts, E2E tests** — not yet built.
+`backend/app/market/` is fully built, reviewed, and in sync with all planning specifications.
+
+**Tests**: 79 pass, 0 fail. Ruff clean.
+
+| Module | Status | Tests |
+|---|---|---|
+| `models.py` | Complete | 11 |
+| `cache.py` | Complete | 18 |
+| `simulator.py` (GBMSimulator) | Complete | 17 |
+| `simulator.py` (SimulatorDataSource) | Complete | 9 |
+| `massive_client.py` | Complete | 13 |
+| `factory.py` | Complete | 7 |
+| `stream.py` | Complete — **no unit tests** | 0 |
+| `interface.py`, `seed_prices.py`, `__init__.py` | Complete | covered above |
+
+**Known gap**: `stream.py` (`create_stream_router`, `_generate_events`) has no dedicated unit tests. The SSE behaviour is exercised by the E2E suite when built; add unit tests using FastAPI's `TestClient` or `httpx.AsyncClient` with an async generator mock if coverage is required before E2E.
+
+**Spec conformance** (reviewed against `planning/MASSIVE_API.md`, `planning/MARKET_INTERFACE.md`, `planning/MARKET_SIMULATOR.md`):
+
+- `PriceCache`: thread-safe, `version` counter, `session_open` set on first update and never overwritten, all methods present ✓
+- `PriceUpdate`: frozen dataclass, `to_dict()` emits exact wire names (`prev_price`, `change_pct`, ISO-8601 `timestamp`) ✓
+- `MarketDataSource` ABC: all five lifecycle methods implemented by both data sources ✓
+- `SimulatorDataSource`: cache seeded immediately in `start()` and `add_ticker()`; `dt` derived from interval ✓
+- `MassiveDataSource`: `asyncio.to_thread()` for sync client; immediate first poll; ms→s conversion; error isolation per snapshot and per poll cycle ✓
+- `create_market_data_source`: strips and checks `MASSIVE_API_KEY`, returns correct type ✓
+- SSE stream: one event per ticker per tick; `retry: 1000`; stops on disconnect; `session_open` included in every event ✓
+- Timestamp sentinel: `if timestamp is not None` (not falsy) — `timestamp=0.0` is preserved correctly ✓
+
+**Planning documents** (in `planning/`):
+- `MASSIVE_API.md` — Massive (Polygon.io) REST API reference with code examples, v2 vs v3 comparison, error handling
+- `MARKET_INTERFACE.md` — Unified Python API design: `PriceUpdate`, `PriceCache`, `MarketDataSource` ABC, both implementations, factory, SSE wiring
+- `MARKET_SIMULATOR.md` — GBM math, Cholesky correlation, random events, seed prices, simulator implementation
+
+### Remaining Components — Not Yet Built
+
+- **Portfolio & watchlist API** (`GET/POST /api/portfolio`, `POST /api/portfolio/trade`, `GET/POST/DELETE /api/watchlist`, etc.)
+- **Chat / LLM integration** (`POST /api/chat`, LiteLLM → Groq, structured output, auto-execution)
+- **Database layer** (SQLite schema, lazy init, WAL mode, seed data)
+- **Frontend** (Next.js static export, Zustand, Lightweight Charts, Tailwind)
+- **Start/stop scripts** (`scripts/`)
+- **E2E tests** (`test/`)
