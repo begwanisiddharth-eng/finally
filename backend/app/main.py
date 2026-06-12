@@ -104,7 +104,7 @@ def _include_chat_router(app: FastAPI) -> None:
     try:
         from app.api import chat
     except ImportError:
-        logger.info("Chat router not present; skipping /api/chat")
+        logger.warning("Chat router not present; skipping /api/chat")
         return
     app.include_router(chat.router)
 

@@ -19,6 +19,26 @@ from .schema import ChatResponse
 HISTORY_LIMIT = 20
 
 
+def _execution_note(trade_results: list[dict], watchlist_results: list[dict]) -> str:
+    """Compact execution summary appended to the stored assistant content.
+
+    Lets the LLM see on the next turn whether its proposed actions succeeded or
+    failed, so it does not build follow-up decisions on a false premise.
+    """
+    parts = []
+    for r in trade_results:
+        if r["ok"]:
+            parts.append(f"{r['ticker']} {r['side']} {r['quantity']:g} executed at ${r['price']:,.2f}")
+        else:
+            parts.append(f"{r['ticker']} {r['side']} {r['quantity']:g} FAILED: {r.get('error', 'unknown')}")
+    for r in watchlist_results:
+        if r["ok"]:
+            parts.append(f"watchlist {r['action']} {r['ticker']} done")
+        else:
+            parts.append(f"watchlist {r['action']} {r['ticker']} FAILED: {r.get('error', 'unknown')}")
+    return "\n[Execution: " + "; ".join(parts) + "]"
+
+
 def _mock_enabled() -> bool:
     return os.getenv("LLM_MOCK", "").lower() == "true"
 
@@ -116,7 +136,12 @@ async def handle_chat(
         "trade_results": trade_results,
         "watchlist_results": watchlist_results,
     }
-    await insert_chat_message(conn, "assistant", response.message, actions=actions)
+    # Append results to stored content so subsequent LLM turns see whether
+    # the proposed actions actually succeeded or failed.
+    stored_content = response.message
+    if trade_results or watchlist_results:
+        stored_content += _execution_note(trade_results, watchlist_results)
+    await insert_chat_message(conn, "assistant", stored_content, actions=actions)
 
     return {
         "message": response.message,

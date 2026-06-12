@@ -43,5 +43,7 @@ async def call_llm(messages: list[dict]) -> ChatResponse:
         response_format=ChatResponse,
         reasoning_effort="high",
     )
+    if not response.choices:
+        raise RuntimeError("LLM returned no choices")
     content = response.choices[0].message.content
     return ChatResponse.model_validate_json(content)

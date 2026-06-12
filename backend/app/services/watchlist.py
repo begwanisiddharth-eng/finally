@@ -31,7 +31,7 @@ async def build_watchlist_view(conn: aiosqlite.Connection, cache: PriceCache) ->
         price = update.price if update else None
         prev_price = update.previous_price if update else None
         change_pct = 0.0
-        if price is not None and session_open:
+        if price is not None and session_open is not None:
             change_pct = round((price - session_open) / session_open * 100, 2)
         result.append(
             {

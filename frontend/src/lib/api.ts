@@ -15,9 +15,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { "Content-Type": "application/json" },
     ...init,
   });
-  const data = await res.json();
-  if (!res.ok || data?.ok === false) {
-    throw new Error(data?.error ?? `Request failed: ${res.status}`);
+  let data: unknown;
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error(`Request failed: ${res.status} (non-JSON response)`);
+  }
+  const d = data as Record<string, unknown>;
+  if (!res.ok || d?.ok === false) {
+    throw new Error((d?.error as string) ?? `Request failed: ${res.status}`);
   }
   return data as T;
 }

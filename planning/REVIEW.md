@@ -139,3 +139,41 @@ All previously-confirmed items still hold. The one prior deviation (non-ISO time
 
 - `execute_trade` still commits per statement under the lock; the lock prevents interleaving, but a hard process kill mid-order could in principle leave a partially-applied trade. Acceptable for a local single-user simulator; a single-transaction rewrite is the path if this ever becomes multi-user.
 - Chat history rehydration applies only when the panel is empty on load (by design, to avoid clobbering in-flight messages).
+
+---
+
+## 10. Review of the Remediation Commit (9a389b0)
+
+The latest commit merged the `review-fixes` branch, closing items H1, H2, M1-M4, and L1-L6/L8-L9 from the original review. This section reviews the remediation code itself.
+
+### Assessment
+
+The fixes are correct and proportionate. The approach is consistently pragmatic — lock-based serialization rather than full transactions, async migration for the LLM call, extracted services rather than architectural rewrites. All accepted findings were properly resolved.
+
+### Issues found in the remediation code
+
+| ID | Severity | File | Finding |
+|----|----------|------|---------|
+| R1 | **High** | `frontend/src/lib/useLiveData.ts:38` | **Uncaught `JSON.parse` in SSE handler.** A malformed SSE event throws `SyntaxError` inside the `onmessage` callback, which then triggers `source.onerror` and sets the connection status to `"disconnected"`. React's commit phase could also crash depending on the error boundary. Wrap in `try/catch` with a `console.warn` and skip the event. |
+| R2 | **Medium** | `frontend/src/lib/api.ts:18` | **`res.json()` crashes on non-JSON responses.** If the backend returns an HTML error page (reverse proxy, 502, etc.), `res.json()` throws `SyntaxError` as an unhandled promise rejection. Wrap in `try/catch` and fall back to `res.text()`. |
+| R3 | **Medium** | `backend/app/llm/service.py:112-119` | **LLM loses execution feedback.** The assistant message content is persisted verbatim from the LLM, but execution results (`trade_results`, `watchlist_results`) are stored separately in the `actions` column. On the next chat turn, `prompt.py` feeds only `role` and `content` to the LLM — it never sees that its proposed trade actually failed (e.g., insufficient cash). The model builds subsequent decisions on a false premise. Append failure/success context to the assistant message content, or pass `actions` in the history assembly. |
+| R4 | **Medium** | `backend/app/llm/client.py:46` | **No guard against empty `choices`.** If the LLM returns `choices: []` (possible during API degradation), `response.choices[0]` raises `IndexError` and crashes the chat endpoint with a 500. Check `if not response.choices` and raise a descriptive `LLMError`. |
+| R5 | **Medium** | `backend/app/services/trades.py:62-71` | **`GET /api/portfolio` can observe an inconsistent state.** The trade path is serialized under `db_write_lock`, but `build_portfolio` does NOT acquire it. Between cash debit and position upsert, a concurrent portfolio read sees cash spent but no position yet. Either acquire the read lock in `build_portfolio` or make the two writes atomic. |
+| R6 | **Medium** | `backend/app/services/watchlist.py:34` | **`session_open` falsy-zero trap.** `if price is not None and session_open` treats `session_open=0.0` as falsy, so `change_pct` defaults to `0.0`. Should be `session_open is not None` to match the fix in L1 for prices. |
+| R7 | **Medium** | `frontend/src/lib/store.ts:88` | **SSE auto-select overrides explicit deselection.** `selectedTicker: state.selectedTicker ?? event.ticker` re-selects a ticker on every SSE event if the user has never clicked one, and also re-selects if the user explicitly set it to `null`. Use a sentinel (e.g., `__never__`) to distinguish "never selected" from "deselected." |
+| R8 | **Medium** | `backend/app/db/connection.py:55-65` | **Seed data has no validation.** Hard-coded seed tickers (`SEED_TICKERS`) are inserted via `INSERT OR IGNORE` — invalid tickers fail silently with no warning. Add a startup log if any seed insert is skipped. |
+| R9 | **Low** | `frontend/src/lib/useLiveData.ts:57-77` | **Stale-data race in periodic pull.** `pull()` is called immediately plus every 5s via `setInterval`. If a pull takes >5s, completions can overwrite newer data with stale data. Use a flag or serial queue to ignore stale completions. |
+| R10 | **Low** | `frontend/src/components/Watchlist.tsx:24-28` | **`onRemove` bypasses the store action.** The handler calls `useStore.setState` directly with an inline filter instead of using `setWatchlist`. If the watchlist state shape ever changes, this inlined mutation becomes a maintenance trap. Standardise on the store action. |
+| R11 | **Low** | `frontend/src/lib/useLiveData.ts:25-30` | **Six separate Zustand selectors.** Each `useStore(s => s.xxx)` is an independent subscription. A single selector with shallow comparison would reduce subscription overhead. |
+| R12 | **Low** | `backend/app/main.py:108` | **Silent `ImportError` swallow.** `_include_chat_router` catches `ImportError` without logging. A missing dependency or syntax error in the chat module goes undiagnosed until runtime. Add a `logger.warning`. |
+| R13 | **Low** | `frontend/src/lib/useFlash.ts:17-18` | **`prev.current` updated before cleanup return.** If the component unmounts while a flash is active, `prev.current` has already been updated to the new value before the cleanup closure captures `id`. On re-mount, the stale `prev.current` may produce a spurious flash. Move the `prev.current` update after the timeout setup. |
+| R14 | **Low** | `frontend/src/components/Watchlist.tsx:94` | **Placeholder-data flash.** After `api.addTicker` succeeds, the code sets `{ ticker, price: 0, change_pct: 0, ... }` as a placeholder until the next 5s REST refresh. The user sees a brief `$0.00 / 0.00%` blip. Set the current SSE price if available from the store, or skip the optimistic update. |
+| R15 | **Low** | `backend/app/db/repository.py:31-32` | **`get_cash_balance` crashes on missing user.** `row["cash_balance"]` raises `TypeError` (subscript on `None`) when `user_id` does not exist. Return `0.0` or raise a domain error. |
+
+### Regression risk note
+
+The E2E test change in `test/e2e/chat.spec.ts` now uses `last()` matchers instead of `toHaveCount(1)`. If the page is reloaded mid-test for any reason (e.g., navigation retry logic), the chat history may be rehydrated with >1 bubbles from a previous run, and `last()` still matches — so the assertion is tolerant. This is correct, but the trade-off is that a truly empty chat panel would not be caught by these assertions (the test would silently pass even if no new bubble appeared). Consider asserting that at least one new bubble appeared (by comparing count before and after the send).
+
+### Summary
+
+The remediation is sound and the architectural choices (lock, async, extracted services) are proportionate. The new issues are concentrated in the newly written frontend library code (`useLiveData`, `api`, `store`, `Watchlist`) — the SSE error handling gap (R1) is the most actionable. The LLM feedback-loop gap (R3) is the most impactful for correctness but exists from the original build, not introduced by the remediation.

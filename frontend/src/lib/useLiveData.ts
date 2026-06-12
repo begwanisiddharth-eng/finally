@@ -36,8 +36,12 @@ export function useLiveData() {
     source.onopen = () => setConnection("connected");
 
     source.onmessage = (e) => {
-      const event = JSON.parse(e.data) as PriceEvent;
-      applyPriceEvent(event);
+      try {
+        const event = JSON.parse(e.data) as PriceEvent;
+        applyPriceEvent(event);
+      } catch {
+        console.warn("Malformed SSE event; skipping:", e.data);
+      }
     };
 
     // EventSource auto-reconnects (server sends retry: 1000); reflect that here.

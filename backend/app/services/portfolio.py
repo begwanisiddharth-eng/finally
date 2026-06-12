@@ -7,13 +7,21 @@ import aiosqlite
 from app.db import get_cash_balance, list_positions
 from app.market import PriceCache
 
+from .locks import db_write_lock
+
 
 async def build_portfolio(conn: aiosqlite.Connection, cache: PriceCache) -> dict:
     """Return the full portfolio view: cash, positions with P&L, total value.
 
+    Acquires db_write_lock so reads are consistent with concurrent trades.
     Positions are valued at the current cached price. Tickers with no cached
     price fall back to avg_cost so the holding still appears with zero P&L.
     """
+    async with db_write_lock:
+        return await _snapshot(conn, cache)
+
+
+async def _snapshot(conn: aiosqlite.Connection, cache: PriceCache) -> dict:
     cash = await get_cash_balance(conn)
     positions = []
     holdings_value = 0.0
@@ -50,6 +58,10 @@ async def build_portfolio(conn: aiosqlite.Connection, cache: PriceCache) -> dict
 
 
 async def compute_total_value(conn: aiosqlite.Connection, cache: PriceCache) -> float:
-    """Total portfolio value (cash + holdings valued at current prices)."""
-    portfolio = await build_portfolio(conn, cache)
-    return portfolio["total_value"]
+    """Total portfolio value. Caller must already hold db_write_lock."""
+    cash = await get_cash_balance(conn)
+    holdings = 0.0
+    for pos in await list_positions(conn):
+        price = cache.get_price(pos["ticker"])
+        holdings += pos["quantity"] * (price if price is not None else pos["avg_cost"])
+    return cash + holdings

@@ -29,7 +29,7 @@ async def get_cash_balance(conn: aiosqlite.Connection, user_id: str = DEFAULT_US
         "SELECT cash_balance FROM users_profile WHERE user_id = ?", (user_id,)
     )
     row = await cursor.fetchone()
-    return row["cash_balance"]
+    return row["cash_balance"] if row else DEFAULT_CASH
 
 
 async def set_cash_balance(

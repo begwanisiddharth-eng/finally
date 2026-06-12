@@ -85,16 +85,22 @@ export function Watchlist() {
     setError(null);
     try {
       await api.addTicker(ticker);
-      useStore.setState((s) =>
-        s.watchlist.some((w) => w.ticker === ticker)
-          ? s
-          : {
-              watchlist: [
-                ...s.watchlist,
-                { ticker, price: 0, prev_price: 0, session_open: 0, change_pct: 0 },
-              ],
+      useStore.setState((s) => {
+        if (s.watchlist.some((w) => w.ticker === ticker)) return s;
+        const live = s.prices[ticker];
+        return {
+          watchlist: [
+            ...s.watchlist,
+            {
+              ticker,
+              price: live?.price ?? 0,
+              prev_price: live?.prev_price ?? 0,
+              session_open: live?.session_open ?? 0,
+              change_pct: live?.change_pct ?? 0,
             },
-      );
+          ],
+        };
+      });
       setInput("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add ticker");
