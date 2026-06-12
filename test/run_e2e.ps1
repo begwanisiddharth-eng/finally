@@ -28,6 +28,10 @@ Pop-Location
 
 Write-Host "[e2e] Starting backend (LLM_MOCK=true)..."
 $env:LLM_MOCK = "true"
+# Use a throwaway database so the suite never touches the real db/finally.db.
+$testDb = Join-Path $testDir "e2e_finally.db"
+Remove-Item -Force -ErrorAction SilentlyContinue "$testDb", "$testDb-shm", "$testDb-wal"
+$env:FINALLY_DB_PATH = $testDb
 $backendProc = Start-Process -PassThru -WorkingDirectory $backend `
     -FilePath "uv" `
     -ArgumentList "run", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"
@@ -58,6 +62,7 @@ finally {
     Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue |
         Select-Object -ExpandProperty OwningProcess -Unique |
         ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }
+    Remove-Item -Force -ErrorAction SilentlyContinue "$testDb", "$testDb-shm", "$testDb-wal"
 }
 
 exit $exit

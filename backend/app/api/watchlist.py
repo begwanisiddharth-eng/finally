@@ -5,9 +5,12 @@ from __future__ import annotations
 import aiosqlite
 from fastapi import APIRouter, Depends
 
-from app.db import list_watchlist
 from app.market import MarketDataSource, PriceCache
-from app.services.watchlist import WatchlistError, execute_watchlist_change
+from app.services.watchlist import (
+    WatchlistError,
+    build_watchlist_view,
+    execute_watchlist_change,
+)
 
 from .deps import get_cache, get_conn, get_source
 from .errors import ApiError
@@ -21,29 +24,8 @@ async def get_watchlist(
     conn: aiosqlite.Connection = Depends(get_conn),
     cache: PriceCache = Depends(get_cache),
 ) -> list[dict]:
-    """Watchlist tickers with their latest cached price data.
-
-    change_pct is the session change: current price vs session_open.
-    """
-    result = []
-    for ticker in await list_watchlist(conn):
-        update = cache.get(ticker)
-        session_open = cache.get_session_open(ticker)
-        price = update.price if update else None
-        prev_price = update.previous_price if update else None
-        change_pct = 0.0
-        if price is not None and session_open:
-            change_pct = round((price - session_open) / session_open * 100, 2)
-        result.append(
-            {
-                "ticker": ticker,
-                "price": price,
-                "prev_price": prev_price,
-                "session_open": session_open,
-                "change_pct": change_pct,
-            }
-        )
-    return result
+    """Watchlist tickers with their latest cached price data."""
+    return await build_watchlist_view(conn, cache)
 
 
 @router.post("")

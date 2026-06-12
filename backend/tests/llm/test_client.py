@@ -1,4 +1,4 @@
-"""LLM client tests with the LiteLLM completion call mocked."""
+"""LLM client tests with the (async) LiteLLM completion call mocked."""
 
 from __future__ import annotations
 
@@ -16,40 +16,45 @@ def _fake_response(content: str):
     return SimpleNamespace(choices=[SimpleNamespace(message=message)])
 
 
-def test_call_llm_parses_structured_output(monkeypatch):
-    raw = '{"message":"ok","trades":[{"ticker":"AAPL","side":"buy","quantity":5}]}'
-    monkeypatch.setattr(client, "completion_with_backoff", lambda **kw: _fake_response(raw))
+def _patch_completion(monkeypatch, content: str, captured: dict | None = None):
+    """Replace the async completion_with_backoff with a coroutine returning content."""
 
-    result = client.call_llm([{"role": "user", "content": "buy"}])
+    async def fake_completion(**kwargs):
+        if captured is not None:
+            captured.update(kwargs)
+        return _fake_response(content)
+
+    monkeypatch.setattr(client, "completion_with_backoff", fake_completion)
+
+
+async def test_call_llm_parses_structured_output(monkeypatch):
+    raw = '{"message":"ok","trades":[{"ticker":"AAPL","side":"buy","quantity":5}]}'
+    _patch_completion(monkeypatch, raw)
+
+    result = await client.call_llm([{"role": "user", "content": "buy"}])
     assert result.message == "ok"
     assert result.trades[0].ticker == "AAPL"
 
 
-def test_call_llm_malformed_json_raises(monkeypatch):
-    monkeypatch.setattr(
-        client, "completion_with_backoff", lambda **kw: _fake_response("not json")
-    )
+async def test_call_llm_malformed_json_raises(monkeypatch):
+    _patch_completion(monkeypatch, "not json")
     with pytest.raises(ValidationError):
-        client.call_llm([{"role": "user", "content": "hi"}])
+        await client.call_llm([{"role": "user", "content": "hi"}])
 
 
-def test_call_llm_invalid_schema_raises(monkeypatch):
-    # Valid JSON, but quantity violates the gt=0 constraint.
+async def test_call_llm_invalid_schema_raises(monkeypatch):
+    # Valid JSON, but quantity violates the minimum-quantity constraint.
     raw = '{"message":"x","trades":[{"ticker":"AAPL","side":"buy","quantity":-1}]}'
-    monkeypatch.setattr(client, "completion_with_backoff", lambda **kw: _fake_response(raw))
+    _patch_completion(monkeypatch, raw)
     with pytest.raises(ValidationError):
-        client.call_llm([{"role": "user", "content": "hi"}])
+        await client.call_llm([{"role": "user", "content": "hi"}])
 
 
-def test_call_llm_passes_model_and_structured_format(monkeypatch):
-    captured = {}
+async def test_call_llm_passes_model_and_structured_format(monkeypatch):
+    captured: dict = {}
+    _patch_completion(monkeypatch, '{"message":"ok"}', captured)
 
-    def fake_completion(**kwargs):
-        captured.update(kwargs)
-        return _fake_response('{"message":"ok"}')
-
-    monkeypatch.setattr(client, "completion_with_backoff", fake_completion)
-    client.call_llm([{"role": "user", "content": "hi"}])
+    await client.call_llm([{"role": "user", "content": "hi"}])
 
     assert captured["model"] == "groq/openai/gpt-oss-120b"
     assert captured["response_format"] is client.ChatResponse

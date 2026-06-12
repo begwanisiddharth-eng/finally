@@ -26,12 +26,16 @@ npx playwright install --with-deps chromium
 
 echo "[e2e] Starting backend (LLM_MOCK=true)..."
 cd "$BACKEND"
-LLM_MOCK=true uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+# Use a throwaway database so the suite never touches the real db/finally.db.
+TEST_DB="$TEST_DIR/e2e_finally.db"
+rm -f "$TEST_DB" "$TEST_DB-shm" "$TEST_DB-wal"
+LLM_MOCK=true FINALLY_DB_PATH="$TEST_DB" uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 &
 BACKEND_PID=$!
 
 cleanup() {
     echo "[e2e] Stopping backend..."
     kill "$BACKEND_PID" 2>/dev/null || true
+    rm -f "$TEST_DB" "$TEST_DB-shm" "$TEST_DB-wal"
 }
 trap cleanup EXIT
 

@@ -22,7 +22,8 @@ async def build_portfolio(conn: aiosqlite.Connection, cache: PriceCache) -> dict
         ticker = pos["ticker"]
         quantity = pos["quantity"]
         avg_cost = pos["avg_cost"]
-        current_price = cache.get_price(ticker) or avg_cost
+        cached_price = cache.get_price(ticker)
+        current_price = cached_price if cached_price is not None else avg_cost
         market_value = quantity * current_price
         cost_basis = quantity * avg_cost
         unrealized_pnl = market_value - cost_basis

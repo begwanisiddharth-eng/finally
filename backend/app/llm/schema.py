@@ -16,7 +16,7 @@ class TradeAction(BaseModel):
 
     ticker: str
     side: Literal["buy", "sell"]
-    quantity: float = Field(gt=0, ge=0.001)
+    quantity: float = Field(ge=0.001)
 
 
 class WatchlistAction(BaseModel):

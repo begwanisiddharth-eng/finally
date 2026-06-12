@@ -118,11 +118,11 @@ async def upsert_position(
     await conn.execute(
         """
         INSERT INTO positions (id, user_id, ticker, quantity, avg_cost, updated_at)
-        VALUES (?, ?, ?, ?, ?, datetime('now'))
+        VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
         ON CONFLICT (user_id, ticker)
         DO UPDATE SET quantity = excluded.quantity,
                       avg_cost = excluded.avg_cost,
-                      updated_at = datetime('now')
+                      updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
         """,
         (_new_id(), user_id, ticker, quantity, avg_cost),
     )

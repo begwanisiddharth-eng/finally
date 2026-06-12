@@ -27,13 +27,22 @@ function Row({ ticker }: { ticker: string }) {
     }));
   };
 
+  const onSelectKey = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      selectTicker(ticker);
+    }
+  };
+
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => selectTicker(ticker)}
+      onKeyDown={onSelectKey}
       data-testid={`watch-row-${ticker}`}
       data-selected={selected}
-      className={`group grid w-full grid-cols-[1fr_auto_auto] items-center gap-3 rounded-md px-3 py-2 text-left transition-colors ${
+      className={`group grid w-full cursor-pointer grid-cols-[1fr_auto_auto] items-center gap-3 rounded-md px-3 py-2 text-left transition-colors ${
         selected ? "bg-bg-elevated ring-1 ring-accent-blue/40" : "hover:bg-bg-elevated/60"
       }`}
     >
@@ -50,17 +59,17 @@ function Row({ ticker }: { ticker: string }) {
         <span className={`tnum w-16 text-right text-sm ${pnlColor(changePct)}`}>
           {live ? pct(changePct) : "—"}
         </span>
-        <span
+        <button
+          type="button"
           onClick={onRemove}
-          role="button"
           aria-label={`Remove ${ticker}`}
           data-testid={`watch-remove-${ticker}`}
           className="flex h-5 w-5 items-center justify-center rounded text-muted opacity-0 transition-opacity hover:bg-loss/20 hover:text-loss group-hover:opacity-100"
         >
           ×
-        </span>
+        </button>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -96,7 +105,7 @@ export function Watchlist() {
     <section className="panel flex min-h-0 flex-col" data-testid="watchlist">
       <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
         <h2 className="panel-title">Watchlist</h2>
-        <span className="tnum text-xs text-muted">{watchlist.length}/10</span>
+        <span className="tnum text-xs text-muted">{watchlist.length}</span>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-1.5">

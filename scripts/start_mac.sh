@@ -25,10 +25,18 @@ echo "[FinAlly] Syncing backend..."
 cd "$BACKEND"
 uv sync
 
+echo "[FinAlly] Starting FastAPI on http://127.0.0.1:8000 ..."
+cd "$BACKEND"
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+SERVER_PID=$!
+
 if [ "$NO_BROWSER" = false ]; then
-    open "http://localhost:8000" 2>/dev/null || xdg-open "http://localhost:8000" 2>/dev/null || true
+    # Open the browser only once the server answers, so the first page load works.
+    for _ in $(seq 1 60); do
+        if curl -sf "http://127.0.0.1:8000/api/health" >/dev/null 2>&1; then break; fi
+        sleep 1
+    done
+    open "http://127.0.0.1:8000" 2>/dev/null || xdg-open "http://127.0.0.1:8000" 2>/dev/null || true
 fi
 
-echo "[FinAlly] Starting FastAPI on http://localhost:8000 ..."
-cd "$BACKEND"
-exec uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+wait "$SERVER_PID"

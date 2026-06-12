@@ -3,14 +3,14 @@
 CREATE TABLE IF NOT EXISTS users_profile (
     user_id      TEXT PRIMARY KEY DEFAULT 'default',
     cash_balance REAL NOT NULL DEFAULT 10000.0,
-    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
 CREATE TABLE IF NOT EXISTS watchlist (
     id       TEXT PRIMARY KEY,
     user_id  TEXT NOT NULL DEFAULT 'default',
     ticker   TEXT NOT NULL,
-    added_at TEXT NOT NULL DEFAULT (datetime('now')),
+    added_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     UNIQUE (user_id, ticker)
 );
 
@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS positions (
     ticker     TEXT NOT NULL,
     quantity   REAL NOT NULL,
     avg_cost   REAL NOT NULL,
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     UNIQUE (user_id, ticker)
 );
 
@@ -31,14 +31,14 @@ CREATE TABLE IF NOT EXISTS trades (
     side        TEXT NOT NULL,
     quantity    REAL NOT NULL,
     price       REAL NOT NULL,
-    executed_at TEXT NOT NULL DEFAULT (datetime('now'))
+    executed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
 CREATE TABLE IF NOT EXISTS portfolio_snapshots (
     id          TEXT PRIMARY KEY,
     user_id     TEXT NOT NULL DEFAULT 'default',
     total_value REAL NOT NULL,
-    recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+    recorded_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
 CREATE TABLE IF NOT EXISTS chat_messages (
@@ -47,5 +47,5 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     role       TEXT NOT NULL,
     content    TEXT NOT NULL,
     actions    TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );

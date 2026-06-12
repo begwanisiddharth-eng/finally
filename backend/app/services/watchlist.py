@@ -11,10 +11,38 @@ import re
 
 import aiosqlite
 
-from app.db import add_watchlist_ticker, remove_watchlist_ticker
-from app.market import MarketDataSource
+from app.db import add_watchlist_ticker, list_watchlist, remove_watchlist_ticker
+from app.market import MarketDataSource, PriceCache
 
 TICKER_RE = re.compile(r"^[A-Z0-9]{1,10}$")
+
+
+async def build_watchlist_view(conn: aiosqlite.Connection, cache: PriceCache) -> list[dict]:
+    """Watchlist tickers with their latest cached price data.
+
+    change_pct is the session change: current price vs session_open. Shared by
+    the GET /api/watchlist route and the LLM chat context builder so the price
+    shaping lives in one place.
+    """
+    result = []
+    for ticker in await list_watchlist(conn):
+        update = cache.get(ticker)
+        session_open = cache.get_session_open(ticker)
+        price = update.price if update else None
+        prev_price = update.previous_price if update else None
+        change_pct = 0.0
+        if price is not None and session_open:
+            change_pct = round((price - session_open) / session_open * 100, 2)
+        result.append(
+            {
+                "ticker": ticker,
+                "price": price,
+                "prev_price": prev_price,
+                "session_open": session_open,
+                "change_pct": change_pct,
+            }
+        )
+    return result
 
 
 class WatchlistError(Exception):

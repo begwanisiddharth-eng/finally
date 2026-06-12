@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import uuid
 from pathlib import Path
 
@@ -9,7 +10,7 @@ import aiosqlite
 
 # Project root is two levels up from this file: app/db/connection.py -> backend -> root.
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
-_DB_PATH = _PROJECT_ROOT / "db" / "finally.db"
+_DEFAULT_DB_PATH = _PROJECT_ROOT / "db" / "finally.db"
 _SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
 
 DEFAULT_USER = "default"
@@ -18,8 +19,13 @@ SEED_TICKERS = ["AAPL", "GOOGL", "MSFT", "AMZN", "TSLA", "NVDA", "META", "JPM", 
 
 
 def db_path() -> Path:
-    """Absolute path to the SQLite database file (project_root/db/finally.db)."""
-    return _DB_PATH
+    """Absolute path to the SQLite database file.
+
+    Defaults to project_root/db/finally.db, overridable via FINALLY_DB_PATH so
+    tests / E2E can point at a throwaway database without touching the real one.
+    """
+    override = os.environ.get("FINALLY_DB_PATH", "").strip()
+    return Path(override) if override else _DEFAULT_DB_PATH
 
 
 async def connect(path: Path | None = None) -> aiosqlite.Connection:
@@ -28,7 +34,7 @@ async def connect(path: Path | None = None) -> aiosqlite.Connection:
     Idempotent: schema uses CREATE TABLE IF NOT EXISTS and seeding skips existing rows.
     Rows are returned as aiosqlite.Row (mapping access by column name).
     """
-    target = path or _DB_PATH
+    target = path or db_path()
     target.parent.mkdir(parents=True, exist_ok=True)
     conn = await aiosqlite.connect(target)
     conn.row_factory = aiosqlite.Row
