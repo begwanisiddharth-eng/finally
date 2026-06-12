@@ -7,7 +7,7 @@ must be allowlisted, and retries cover Groq rate limits / overloads.
 from __future__ import annotations
 
 import litellm
-from litellm import completion
+from litellm import acompletion
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -26,14 +26,18 @@ MODEL = "groq/openai/gpt-oss-120b"
     wait=wait_exponential(multiplier=2, min=4, max=64),
     retry=retry_if_exception_type((litellm.RateLimitError, litellm.ServiceUnavailableError)),
 )
-def completion_with_backoff(**kwargs):
+async def completion_with_backoff(**kwargs):
     kwargs.setdefault("allowed_openai_params", ["reasoning_effort"])
-    return completion(**kwargs)
+    return await acompletion(**kwargs)
 
 
-def call_llm(messages: list[dict]) -> ChatResponse:
-    """Call Groq with structured outputs and parse into a ChatResponse."""
-    response = completion_with_backoff(
+async def call_llm(messages: list[dict]) -> ChatResponse:
+    """Call Groq with structured outputs and parse into a ChatResponse.
+
+    Uses the async LiteLLM client so the network round-trip does not block the
+    event loop (which would stall the SSE price stream for the whole process).
+    """
+    response = await completion_with_backoff(
         model=MODEL,
         messages=messages,
         response_format=ChatResponse,

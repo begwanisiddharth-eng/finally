@@ -21,6 +21,7 @@ from app.db import (
 )
 from app.market import PriceCache
 
+from .locks import db_write_lock
 from .portfolio import compute_total_value
 
 
@@ -42,6 +43,9 @@ async def execute_trade(
     reduces or removes the position. Both append a trade row and write a
     portfolio snapshot.
 
+    The whole order is serialized under db_write_lock so concurrent trades (or
+    a trade overlapping the snapshot task) cannot interleave and lose updates.
+
     Returns the trade response dict. Raises TradeError on any validation
     failure (caller maps this to a 400 error envelope).
     """
@@ -55,16 +59,17 @@ async def execute_trade(
     if price is None:
         raise TradeError(f"No price available for {ticker}")
 
-    if side == "buy":
-        await _execute_buy(conn, ticker, quantity, price)
-    else:
-        await _execute_sell(conn, ticker, quantity, price)
+    async with db_write_lock:
+        if side == "buy":
+            await _execute_buy(conn, ticker, quantity, price)
+        else:
+            await _execute_sell(conn, ticker, quantity, price)
 
-    trade = await insert_trade(conn, ticker, side, quantity, price)
-    total_value = await compute_total_value(conn, cache)
-    await insert_snapshot(conn, total_value)
+        trade = await insert_trade(conn, ticker, side, quantity, price)
+        total_value = await compute_total_value(conn, cache)
+        await insert_snapshot(conn, total_value)
+        cash_balance = await get_cash_balance(conn)
 
-    cash_balance = await get_cash_balance(conn)
     return {
         "ok": True,
         "ticker": ticker,

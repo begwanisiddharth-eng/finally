@@ -32,12 +32,14 @@ SNAPSHOT_INTERVAL = 30.0  # seconds
 async def _snapshot_loop(app: FastAPI) -> None:
     """Write a portfolio value snapshot every SNAPSHOT_INTERVAL seconds."""
     from app.db import insert_snapshot
+    from app.services.locks import db_write_lock
 
     while True:
         await asyncio.sleep(SNAPSHOT_INTERVAL)
         try:
-            total = await compute_total_value(app.state.conn, app.state.cache)
-            await insert_snapshot(app.state.conn, total)
+            async with db_write_lock:
+                total = await compute_total_value(app.state.conn, app.state.cache)
+                await insert_snapshot(app.state.conn, total)
         except Exception:
             logger.exception("Snapshot loop failed")
 
@@ -116,7 +118,9 @@ def _register_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def _validation_handler(_request, exc: RequestValidationError):
-        return error_response(400, "Invalid request: " + str(exc.errors()))
+        # Summarize which fields failed without leaking raw Pydantic internals.
+        fields = ", ".join(".".join(str(p) for p in e["loc"][1:]) or "body" for e in exc.errors())
+        return error_response(400, f"Invalid request: check field(s): {fields}")
 
     @app.exception_handler(Exception)
     async def _unexpected_handler(_request, exc: Exception):

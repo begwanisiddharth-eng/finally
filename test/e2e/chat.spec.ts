@@ -88,11 +88,16 @@ test.describe("AI chat (mocked)", () => {
     await page.locator(tid(sel.chatInput)).fill(MOCK.analyzePrompt);
     await page.locator(tid(sel.chatSend)).click();
 
-    // One user bubble and one assistant bubble should render.
-    await expect(page.locator(tid(sel.chatMsgUser))).toHaveCount(1, { timeout: 15_000 });
-    const assistant = page.locator(tid(sel.chatMsgAssistant));
-    await expect(assistant).toHaveCount(1, { timeout: 15_000 });
-    await expect(assistant.last()).toContainText(MOCK.analyzeMessage);
+    // The newest user + assistant bubbles reflect this turn. (Counts are not
+    // asserted because prior turns are rehydrated from persisted history.)
+    await expect(page.locator(tid(sel.chatMsgUser)).last()).toContainText(
+      MOCK.analyzePrompt,
+      { timeout: 15_000 },
+    );
+    await expect(page.locator(tid(sel.chatMsgAssistant)).last()).toContainText(
+      MOCK.analyzeMessage,
+      { timeout: 15_000 },
+    );
   });
 
   test("chat-driven buy via the UI executes a trade", async ({ page, request }) => {

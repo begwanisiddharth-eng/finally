@@ -82,7 +82,7 @@ async def test_real_path_calls_llm_and_executes(conn, cache, source, monkeypatch
     monkeypatch.delenv("LLM_MOCK", raising=False)
     captured = {}
 
-    def fake_call_llm(messages):
+    async def fake_call_llm(messages):
         captured["messages"] = messages
         return ChatResponse(
             message="Bought it.",
@@ -104,7 +104,7 @@ async def test_real_path_calls_llm_and_executes(conn, cache, source, monkeypatch
 async def test_real_path_history_passed_to_llm(conn, cache, source, monkeypatch):
     monkeypatch.delenv("LLM_MOCK", raising=False)
 
-    def first_call(messages):
+    async def first_call(messages):
         return ChatResponse(message="hi there")
 
     monkeypatch.setattr(service, "call_llm", first_call)
@@ -112,7 +112,7 @@ async def test_real_path_history_passed_to_llm(conn, cache, source, monkeypatch)
 
     captured = {}
 
-    def second_call(messages):
+    async def second_call(messages):
         captured["messages"] = messages
         return ChatResponse(message="again")
 

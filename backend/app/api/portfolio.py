@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends
 
 from app.db import list_snapshots, reset_portfolio
 from app.market import PriceCache
+from app.services.locks import db_write_lock
 from app.services.portfolio import build_portfolio
 from app.services.trades import TradeError, execute_trade
 
@@ -48,5 +49,6 @@ async def get_history(conn: aiosqlite.Connection = Depends(get_conn)) -> list[di
 @router.post("/reset")
 async def post_reset(conn: aiosqlite.Connection = Depends(get_conn)) -> dict:
     """Reset to $10k cash, clearing positions, trades, and snapshots."""
-    await reset_portfolio(conn)
+    async with db_write_lock:
+        await reset_portfolio(conn)
     return {"ok": True}

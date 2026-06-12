@@ -23,11 +23,19 @@ Push-Location $backend
 uv sync
 Pop-Location
 
+Write-Host "[FinAlly] Starting FastAPI on http://127.0.0.1:8000 ..."
+$server = Start-Process -PassThru -NoNewWindow -WorkingDirectory $backend `
+    -FilePath "uv" `
+    -ArgumentList "run", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"
+
 if (-not $NoBrowser) {
-    Start-Process "http://localhost:8000"
+    # Open the browser only once the server answers, so the first page load works.
+    for ($i = 0; $i -lt 60; $i++) {
+        try {
+            if ((Invoke-WebRequest "http://127.0.0.1:8000/api/health" -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200) { break }
+        } catch { Start-Sleep -Seconds 1 }
+    }
+    Start-Process "http://127.0.0.1:8000"
 }
 
-Write-Host "[FinAlly] Starting FastAPI on http://localhost:8000 ..."
-Push-Location $backend
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
-Pop-Location
+Wait-Process -Id $server.Id

@@ -25,11 +25,11 @@ def _mock_enabled() -> bool:
 
 async def _load_context(conn: aiosqlite.Connection, cache: PriceCache) -> str:
     """Build the portfolio + watchlist context block from the current state."""
-    from app.api.watchlist import get_watchlist as _build_watchlist
     from app.services.portfolio import build_portfolio
+    from app.services.watchlist import build_watchlist_view
 
     portfolio = await build_portfolio(conn, cache)
-    watchlist = await _build_watchlist(conn, cache)
+    watchlist = await build_watchlist_view(conn, cache)
     return format_portfolio_context(
         cash_balance=portfolio["cash_balance"],
         total_value=portfolio["total_value"],
@@ -104,7 +104,7 @@ async def handle_chat(
         response = mock_response(user_message)
     else:
         messages = build_messages(context, history, user_message)
-        response = call_llm(messages)
+        response = await call_llm(messages)
 
     trade_results = await _execute_trades(conn, cache, response)
     watchlist_results = await _execute_watchlist_changes(conn, source, response)
