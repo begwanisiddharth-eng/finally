@@ -356,11 +356,34 @@ Scenarios: fresh start, add/remove ticker, buy/sell shares, portfolio reset, hea
 
 Planning docs: `MARKET_INTERFACE.md`, `MARKET_SIMULATOR.md`, `MASSIVE_API.md` — all in sync with the implementation.
 
-### Remaining Components — Not Yet Built
+### Backend — Complete
 
-- **Database layer** — SQLite schema, lazy init, WAL mode, seed data
-- **Portfolio & watchlist API** — `GET/POST /api/portfolio`, `POST /api/portfolio/trade`, `GET/POST/DELETE /api/watchlist`
-- **Chat / LLM integration** — `POST /api/chat`, LiteLLM → Groq, structured output, auto-execution
-- **Frontend** — Next.js static export, Zustand, Lightweight Charts, Tailwind
-- **Start/stop scripts** — `scripts/`
-- **E2E tests** — `test/`
+Built by an agent team (db / api / llm engineers). `backend/` — **152 tests pass, 0 fail. Ruff clean.** (79 market + 28 db + 16 api + 29 llm.)
+
+**Database layer** — `app/db/` (`schema.sql`, `connection.py`, `repository.py`, `__init__.py`).
+- 6 tables per §7; TEXT UUID PKs; `user_id TEXT DEFAULT 'default'` everywhere; UNIQUE `(user_id,ticker)` on watchlist + positions.
+- `connect(path=None)`: aiosqlite, `PRAGMA journal_mode=WAL`, `row_factory=Row`, lazy schema (CREATE IF NOT EXISTS) + idempotent seed ($10k default user, 10 default tickers). DB path resolves to `project_root/db/finally.db`, not cwd.
+- Async repo primitives: cash get/set, watchlist list/add/remove, positions get/list/upsert/delete, trades insert/list, snapshots insert/list, chat insert/list-recent-N, `reset_portfolio` (preserves watchlist + chat). 28 tests.
+
+**Portfolio & watchlist API + trade engine** — `app/api/` + `app/services/` + `app/main.py`.
+- `services/trades.execute_trade(conn, cache, ticker, side, quantity)` — shared engine: cash/holdings validation, avg-cost recompute on buy, position removal on full sell, inserts trade + writes snapshot; raises `TradeError`.
+- `services/portfolio.build_portfolio()` / `compute_total_value()`; `services/watchlist.execute_watchlist_change()` — single validation path shared by REST routes **and** chat.
+- Routes: `GET /api/portfolio`, `POST /api/portfolio/trade`, `GET /api/portfolio/history`, `POST /api/portfolio/reset`, `GET/POST /api/watchlist`, `DELETE /api/watchlist/{ticker}`, `GET /api/health`. Error envelope `{"ok": false, "error": ...}` with 400/404/500 handlers.
+- `main.create_app()` + lifespan: connect DB, one shared `PriceCache`, `create_market_data_source`, `source.start(watchlist)`, mount SSE router, 30s snapshot background task. Serves `frontend/out` at `/*`. Module-level `app` → entrypoint `uvicorn app.main:app`. 16 tests.
+
+**Chat / LLM integration** — `app/llm/` + `app/api/chat.py`.
+- `schema.py` (ChatResponse/TradeAction/WatchlistAction, quantity min 0.001), `prompt.py` (system prompt + portfolio context + history assembly), `client.py` (LiteLLM → Groq `groq/openai/gpt-oss-120b`, structured outputs, tenacity backoff), `mock.py` (deterministic `LLM_MOCK=true`, no network), `service.py` (load context + last 20 messages → LLM/mock → auto-execute via shared services → persist → return §8 shape).
+- `POST /api/chat` self-wires via `main._include_chat_router()`. 29 tests.
+
+### Frontend — Built
+
+`frontend/` — Next.js + TypeScript static export (`output: 'export'` → `frontend/out` built). Tailwind dark theme, Zustand store, TradingView Lightweight Charts, `EventSource` SSE with price-flash + connection-status dot.
+- Components: `Header`, `Watchlist` (+ `Sparkline`), `MainChart`, `Heatmap`, `PnlChart`, `PositionsTable`, `TradeBar`, `ChatPanel`, `Dashboard`.
+- `lib/`: `store.ts`, `api.ts`, `types.ts`, `useLiveData.ts`, `useFlash.ts`, `format.ts`. Component + lib tests (React Testing Library / Jest).
+
+### Scripts & E2E — Complete, full gate GREEN
+
+- `scripts/` — `start_windows.ps1`, `stop_windows.ps1`, `start_mac.sh`, `stop_mac.sh` (build frontend, `uv sync`, launch `uvicorn app.main:app` on :8000, `--no-browser`; stop leaves `db/finally.db` untouched).
+- `test/` — `run_e2e.ps1` / `run_e2e.sh` (build, start backend `LLM_MOCK=true`, wait on `/api/health`, run Playwright, tear down). Playwright project + `e2e/selectors.ts` + **25 tests** across all §12 scenarios.
+- **Full E2E gate: GREEN — 25/25 pass (13.7s)** via `test/run_e2e.ps1` against a real clean build (`uvicorn app.main:app` serving `frontend/out`, `LLM_MOCK=true`): fresh-start (10 tickers, $10k, SSE flash), watchlist add/remove (UI + API validation), buy/sell + insufficient-cash/oversell rejection, reset, heatmap + P&L + main chart render, chat-mock (exact messages, real trade execution, watchlist update, ok:false on over-cash), SSE reconnection.
+- Note: runner/Playwright `baseURL` use `127.0.0.1` (not `localhost`) to match uvicorn's IPv4 bind — on Windows `localhost` prefers IPv6 `::1`, which the IPv4-only server doesn't answer, hanging the health probe.

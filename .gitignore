@@ -205,3 +205,19 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
+
+# Node / Next.js (frontend)
+node_modules/
+frontend/.next/
+frontend/out/
+frontend/next-env.d.ts
+frontend/.tsbuildinfo
+*.tsbuildinfo
+
+# SQLite WAL sidecar files
+db/*.db-shm
+db/*.db-wal
+
+# Playwright artifacts
+test/test-results/
+test/playwright-report/
