@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: "Space Grotesk", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: #0d1117;
+  color: #e6edf3;
+  font-family: var(--font-sans);
+  /* Subtle terminal-grid atmosphere behind panels. */
+  background-image:
+    radial-gradient(circle at 15% 0%, rgba(32, 157, 215, 0.06), transparent 40%),
+    radial-gradient(circle at 85% 100%, rgba(117, 57, 145, 0.07), transparent 45%);
+  background-attachment: fixed;
+}
+
+/* Tabular numerals everywhere we print figures, so columns stay aligned. */
+.tnum {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Thin terminal scrollbars. */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a2a40;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3a3a55;
+}
+
+@layer components {
+  .panel {
+    @apply bg-bg-panel/70 border border-border rounded-lg backdrop-blur-sm;
+  }
+  .panel-title {
+    @apply text-[11px] font-semibold uppercase tracking-[0.14em] text-muted;
+  }
+}
